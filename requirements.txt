@@ -3,3 +3,4 @@ networkx
 flask
 flask-socketio
 python-socketio[client]
+dotenv
