@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="../networks/hackathon_demo.net.xml"/>
+        <route-files value="../routes/hackathon_demo_passenger.rou.xml,../routes/hackathon_demo_freight.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="1800"/>
+    </time>
+</configuration>

@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="../networks/high.net.xml"/>
+        <route-files value="../routes/high.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+</configuration>

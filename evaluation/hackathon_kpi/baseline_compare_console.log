@@ -1,0 +1,74 @@
+Warning: At actuated tlLogic 'joinedS_2', linkIndex 1 has no controlling detector.
+Step #0.00 (1ms ~= 1000.00*RT, ~3000.00UPS, TraCI: 309ms, vehicles TOT 3 ACT 3 BUF 1)     Step #100.00 (4ms ~= 250.00*RT, ~28750.00UPS, TraCI: 750ms, vehicles TOT 122 ACT 115 BUF 0Interrupt signal received, trying to exit gracefully.
+[SUMO] Traffic scale after 0.0% reduction: 1.8000
+[SUMO] Controlled RSU alias (source): RSU_A -> cluster_101333380_1652675105_1704693841_2169462573_3366619456_3366620150_3366620151_3366620152_3366620154_3366620155_3366620157_3646631965_5226716099_5226720613_5226721573
+[SUMO] Controlled RSU alias (destination): RSU_K -> 1560224927
+[SUMO] Controlled RSU alias (checkpoint): RSU_C -> cluster_2697454314_2697454315_3246050920_3246050921_38918157_493585795_567607201_57343487_945141958_945142201
+[SUMO] Controlled RSU alias (checkpoint): RSU_F -> cluster_1560223745_1568241351_1568241357_1568241362_1568241369_671564302
+[SUMO] Controlled cohort: 25 vehicles, mode=junction, source=cluster_101333380_1652675105_1704693841_2169462573_3366619456_3366620150_3366620151_3366620152_3366620154_3366620155_3366620157_3646631965_5226716099_5226720613_5226721573, destination=1560224927, via=['cluster_2697454314_2697454315_3246050920_3246050921_38918157_493585795_567607201_57343487_945141958_945142201', 'cluster_1560223745_1568241351_1568241357_1568241362_1568241369_671564302']
+[SUMO] Emergency RSU alias (source): RSU_B -> cluster_1560223404_2335739502_3273797701
+[SUMO] Emergency RSU alias (destination): RSU_M -> cluster_1292264941_1292264943_1301707116_1304505782
+[SUMO] Emergency RSU alias (checkpoint): RSU_D -> cluster_1704693650_1866350919_38920778_671564358
+[SUMO] Emergency RSU alias (checkpoint): RSU_G -> cluster_1560223826_5548037055_5548037348
+[SUMO] Emergency cohort: 9 vehicles (base=3, x3), mode=junction, source=cluster_1560223404_2335739502_3273797701, destination=cluster_1292264941_1292264943_1301707116_1304505782, via=['cluster_1704693650_1866350919_38920778_671564358', 'cluster_1560223826_5548037055_5548037348']
+[SUMO] KPI outputs enabled: statistics=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_statistics.xml, summary=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_summary.xml, tripinfo=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_tripinfo.xml
+[SUMO] Scenario: demo
+[SUMO] Config: sumo/scenarios/city.sumocfg
+[SUMO] Command: ['sumo', '-c', 'sumo/scenarios/city.sumocfg', '--seed', '42', '--step-length', '1.0', '--route-files', '/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_controlled_group.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_emergency_group.rou.xml', '--scale', '1.8', '--junction-taz', 'true', '--statistic-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_statistics.xml', '--summary-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_summary.xml', '--tripinfo-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_tripinfo.xml']
+[SUMO] Max steps: 1800
+ Retrying in 1 seconds
+[SUMO][LOGGER] Enabled 1 Hz logging: run_id=hackathon_baseline_compare rsu_count=26 edge_count=1943 dir=/home/vivek/research/NIT hackathon/final_year_project/data/raw/hackathon_baseline_compare
+Traceback (most recent call last):
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 2139, in main
+    executed_steps = adapter.run_step_loop(
+                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/sumo_adapter.py", line 180, in run_step_loop
+    on_step(steps, sim_time, self._traci)
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 1972, in _on_step
+    runtime_logger.maybe_log(
+  File "/home/vivek/research/NIT hackathon/final_year_project/pipelines/logging/runtime_logger.py", line 377, in maybe_log
+    edge_rows, global_congested = self._collect_edge_snapshot(traci_module=traci_module)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/vivek/research/NIT hackathon/final_year_project/pipelines/logging/runtime_logger.py", line 340, in _collect_edge_snapshot
+    traffic = float(traci_module.edge.getLastStepVehicleNumber(edge_id))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/_edge.py", line 166, in getLastStepVehicleNumber
+    return self._getUniversal(tc.LAST_STEP_VEHICLE_NUMBER, edgeID)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/domain.py", line 147, in _getUniversal
+    return _parse(self._retValFunc, varID, self._getCmd(varID, objectID, format, *values))
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/domain.py", line 152, in _getCmd
+    r = self._connection._sendCmd(self._cmdGetID, varID, objID, format, *values)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 231, in _sendCmd
+    return self._sendExact()
+           ^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 131, in _sendExact
+    result = self._recvExact()
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 109, in _recvExact
+    t = self._socket.recv(4 - len(result))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 2172, in <module>
+    main()
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 2168, in main
+    adapter.close(wait=True)
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/sumo_adapter.py", line 211, in close
+    self._traci.close(wait)
+  File "/usr/share/sumo/tools/traci/main.py", line 262, in close
+    connection.check().close(wait)
+  File "/usr/share/sumo/tools/traci/connection.py", line 396, in close
+    self._sendCmd(tc.CMD_CLOSE, None, None)
+  File "/usr/share/sumo/tools/traci/connection.py", line 231, in _sendCmd
+    return self._sendExact()
+           ^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 137, in _sendExact
+    raise FatalTraCIError("Connection closed by SUMO.")
+traci.exceptions.FatalTraCIError: Connection closed by SUMO.
+Step #129.00 (4ms ~= 250.00*RT, ~34000.00UPS, TraCI: 211ms, vehicles TOT 155 ACT 136 BUF 4

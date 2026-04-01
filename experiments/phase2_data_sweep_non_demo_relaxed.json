@@ -1,0 +1,32 @@
+{
+  "scenarios": ["low", "medium", "high"],
+  "seeds": [11, 17, 23],
+  "traffic_scales": [0.8, 1.0, 1.2],
+  "traffic_reduction_pcts": [20.0, 40.0],
+  "quality_overrides": {
+    "default": {
+      "min_rows": 500,
+      "min_positive_rate": 0.01,
+      "max_positive_rate": 0.99,
+      "min_split_positive_rows": 3
+    },
+    "low": {
+      "min_rows": 200,
+      "min_positive_rate": 0.0,
+      "max_positive_rate": 1.0,
+      "min_split_positive_rows": 0
+    },
+    "medium": {
+      "min_rows": 200,
+      "min_positive_rate": 0.0,
+      "max_positive_rate": 1.0,
+      "min_split_positive_rows": 0
+    },
+    "high": {
+      "min_rows": 200,
+      "min_positive_rate": 0.0,
+      "max_positive_rate": 1.0,
+      "min_split_positive_rows": 0
+    }
+  }
+}

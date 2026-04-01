@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="../networks/medium.net.xml"/>
+        <route-files value="../routes/medium.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+</configuration>

@@ -1,0 +1,15 @@
+timestamp_s,frame_idx,rsu_node,connected_vehicle_count,registered_telemetry_count,packets_received,bytes_received,avg_latency_s,congested_local,congested_global,label_congestion_60s,label_congestion_120s
+0,0,RSU_A,1,1,1,100,0.01,0,0,1,1
+0,0,RSU_B,0,0,0,0,0.00,0,0,1,1
+30,1200,RSU_A,2,2,2,200,0.02,0,1,1,1
+30,1200,RSU_B,0,0,0,0,0.00,0,0,1,1
+60,2400,RSU_A,3,3,3,300,0.03,1,1,0,1
+60,2400,RSU_B,0,0,0,0,0.00,0,1,0,0
+90,3600,RSU_A,2,2,2,200,0.02,0,0,1,1
+90,3600,RSU_B,0,0,0,0,0.00,0,0,0,0
+120,4800,RSU_A,1,1,1,100,0.01,0,0,1,1
+120,4800,RSU_B,0,0,0,0,0.00,0,0,0,0
+150,6000,RSU_A,1,1,1,100,0.01,0,1,0,0
+150,6000,RSU_B,0,0,0,0,0.00,0,0,0,0
+180,7200,RSU_A,1,1,1,100,0.01,0,0,0,0
+180,7200,RSU_B,0,0,0,0,0.00,0,0,0,0

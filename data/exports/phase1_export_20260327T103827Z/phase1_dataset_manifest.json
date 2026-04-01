@@ -1,0 +1,351 @@
+{
+  "bundle": {
+    "bytes": 9384903,
+    "member_count": 27,
+    "members": [
+      "data/processed/smoke_phase1_logger/rsu_horizon_labels.csv",
+      "data/processed/smoke_phase1_logger_seed43/rsu_horizon_labels.csv",
+      "data/processed/smoke_phase1_logger_seed47/rsu_horizon_labels.csv",
+      "data/raw/smoke_phase1_logger/edge_flow_1hz.csv",
+      "data/raw/smoke_phase1_logger/logger_manifest.json",
+      "data/raw/smoke_phase1_logger/rsu_features_1hz.csv",
+      "data/raw/smoke_phase1_logger_seed43/edge_flow_1hz.csv",
+      "data/raw/smoke_phase1_logger_seed43/logger_manifest.json",
+      "data/raw/smoke_phase1_logger_seed43/rsu_features_1hz.csv",
+      "data/raw/smoke_phase1_logger_seed47/edge_flow_1hz.csv",
+      "data/raw/smoke_phase1_logger_seed47/logger_manifest.json",
+      "data/raw/smoke_phase1_logger_seed47/rsu_features_1hz.csv",
+      "data/splits/smoke_phase1_logger/leakage_report.json",
+      "data/splits/smoke_phase1_logger/split_manifest.json",
+      "data/splits/smoke_phase1_logger/test.csv",
+      "data/splits/smoke_phase1_logger/train.csv",
+      "data/splits/smoke_phase1_logger/val.csv",
+      "data/splits/smoke_phase1_logger_seed43/leakage_report.json",
+      "data/splits/smoke_phase1_logger_seed43/split_manifest.json",
+      "data/splits/smoke_phase1_logger_seed43/test.csv",
+      "data/splits/smoke_phase1_logger_seed43/train.csv",
+      "data/splits/smoke_phase1_logger_seed43/val.csv",
+      "data/splits/smoke_phase1_logger_seed47/leakage_report.json",
+      "data/splits/smoke_phase1_logger_seed47/split_manifest.json",
+      "data/splits/smoke_phase1_logger_seed47/test.csv",
+      "data/splits/smoke_phase1_logger_seed47/train.csv",
+      "data/splits/smoke_phase1_logger_seed47/val.csv"
+    ],
+    "path": "data/exports/phase1_export_20260327T103827Z/phase1_dataset_bundle.tar.gz",
+    "sha256": "17dcba734b92096ba5c9e9143aa42ef80d06c3ded7f2a005ba4c0666329fe33b"
+  },
+  "created_at_utc": "2026-03-27T10:38:30Z",
+  "required_horizons": [
+    60,
+    120
+  ],
+  "runs": [
+    {
+      "checks": {
+        "leakage_passed": true,
+        "phase1_gate_ready": true,
+        "required_files_present": true,
+        "required_horizons_present": true
+      },
+      "files": {
+        "leakage_report": {
+          "bytes": 453,
+          "path": "data/splits/smoke_phase1_logger/leakage_report.json",
+          "sha256": "e2458c41542ffded3f92e0b21694bc8d946309a3ba1f9b39ec0e4e7084c0d0d9"
+        },
+        "processed_labels": {
+          "bytes": 113265,
+          "path": "data/processed/smoke_phase1_logger/rsu_horizon_labels.csv",
+          "sha256": "01ef4c2f44e41fc6fe2c2cfbe2ed1f8abf595ef258c385900ab1678bb32af6cd"
+        },
+        "raw_edge_flow": {
+          "bytes": 15466392,
+          "path": "data/raw/smoke_phase1_logger/edge_flow_1hz.csv",
+          "sha256": "2694f240657d17963f766e45a2522cdf841a8d65d487825df329d54bea3671fd"
+        },
+        "raw_logger_manifest": {
+          "bytes": 5256,
+          "path": "data/raw/smoke_phase1_logger/logger_manifest.json",
+          "sha256": "26116b20582ca57f35c55c2ef83216cccd00c5757ea6a7f139956f96d17f57bc"
+        },
+        "raw_rsu_features": {
+          "bytes": 100742,
+          "path": "data/raw/smoke_phase1_logger/rsu_features_1hz.csv",
+          "sha256": "388dd5bbc69abcb48fa023d6a9ecc6fbd6902366bb1e29696058d8ada4b12139"
+        },
+        "split_manifest": {
+          "bytes": 650,
+          "path": "data/splits/smoke_phase1_logger/split_manifest.json",
+          "sha256": "0643c34dbee080ac4104061f67aa28899eca12b4c4e420ddf6ca3f77b9f2b47c"
+        },
+        "split_test": {
+          "bytes": 8569,
+          "path": "data/splits/smoke_phase1_logger/test.csv",
+          "sha256": "2b8c3f3fff6ed9d05fd5fcabc2b8601136e6bb1497dcbf0db8ff255292845a91"
+        },
+        "split_train": {
+          "bytes": 76649,
+          "path": "data/splits/smoke_phase1_logger/train.csv",
+          "sha256": "6d3607d3386067f758fb13c7ee3b42115e58907536d88768f51e008999456022"
+        },
+        "split_val": {
+          "bytes": 18381,
+          "path": "data/splits/smoke_phase1_logger/val.csv",
+          "sha256": "a70c6e2509f85ba6a0b9552876c0d80399bb3a209674f55bb8c21e4a8494635c"
+        }
+      },
+      "missing_files": [],
+      "quality": {
+        "labels": {
+          "horizons": {
+            "120": {
+              "column": "label_congestion_120s",
+              "positive_rate": 0.891667,
+              "positive_rows": 2782
+            },
+            "60": {
+              "column": "label_congestion_60s",
+              "positive_rate": 0.891667,
+              "positive_rows": 2782
+            }
+          },
+          "missing_columns": [],
+          "required_columns": [
+            "label_congestion_60s",
+            "label_congestion_120s"
+          ],
+          "total_rows": 3120
+        },
+        "leakage_passed": true,
+        "splits": {
+          "gap_seconds": 5,
+          "hashes": {
+            "test_sha256": "2b8c3f3fff6ed9d05fd5fcabc2b8601136e6bb1497dcbf0db8ff255292845a91",
+            "train_sha256": "6d3607d3386067f758fb13c7ee3b42115e58907536d88768f51e008999456022",
+            "val_sha256": "a70c6e2509f85ba6a0b9552876c0d80399bb3a209674f55bb8c21e4a8494635c"
+          },
+          "rows": {
+            "gap_dropped": 260,
+            "test": 208,
+            "total": 3120,
+            "train": 2184,
+            "val": 468
+          }
+        }
+      },
+      "run_id": "smoke_phase1_logger",
+      "scenario": "demo",
+      "seed": 42
+    },
+    {
+      "checks": {
+        "leakage_passed": true,
+        "phase1_gate_ready": true,
+        "required_files_present": true,
+        "required_horizons_present": true
+      },
+      "files": {
+        "leakage_report": {
+          "bytes": 453,
+          "path": "data/splits/smoke_phase1_logger_seed43/leakage_report.json",
+          "sha256": "e2458c41542ffded3f92e0b21694bc8d946309a3ba1f9b39ec0e4e7084c0d0d9"
+        },
+        "processed_labels": {
+          "bytes": 113128,
+          "path": "data/processed/smoke_phase1_logger_seed43/rsu_horizon_labels.csv",
+          "sha256": "20fc14e0018ed850c01744d7e57f4431705c403ff25252c5ef1d09a882af9c6f"
+        },
+        "raw_edge_flow": {
+          "bytes": 15466505,
+          "path": "data/raw/smoke_phase1_logger_seed43/edge_flow_1hz.csv",
+          "sha256": "5869e5a3db4875619c4b45611a8f14f61d9653d92a6a5226637b1f90fe4a0796"
+        },
+        "raw_logger_manifest": {
+          "bytes": 5277,
+          "path": "data/raw/smoke_phase1_logger_seed43/logger_manifest.json",
+          "sha256": "323f8e6fd4ebbbb227a09e6816ffe0d18e5230ebc8abf0471712eef4673cb2dc"
+        },
+        "raw_rsu_features": {
+          "bytes": 100605,
+          "path": "data/raw/smoke_phase1_logger_seed43/rsu_features_1hz.csv",
+          "sha256": "ce7536232a3e3c49814d1ded0366eabf66c5a4f64a839ce79471e7eaf437408b"
+        },
+        "split_manifest": {
+          "bytes": 657,
+          "path": "data/splits/smoke_phase1_logger_seed43/split_manifest.json",
+          "sha256": "22e968cc21b2ca12776430d4539a142fe2b1713febf81d64d8ec1230ff9f7033"
+        },
+        "split_test": {
+          "bytes": 8526,
+          "path": "data/splits/smoke_phase1_logger_seed43/test.csv",
+          "sha256": "61d5ca61e34ca990cb2457e58cda8ecc47c6d8688f0fbf325c83ce973cde7950"
+        },
+        "split_train": {
+          "bytes": 76576,
+          "path": "data/splits/smoke_phase1_logger_seed43/train.csv",
+          "sha256": "5b41e11cb799409ce74f93af2d93ddb2fde50763ce4d65a68bf272957d2aba89"
+        },
+        "split_val": {
+          "bytes": 18370,
+          "path": "data/splits/smoke_phase1_logger_seed43/val.csv",
+          "sha256": "4d64b7316da95fc24154cf4a708d6e0abcd14fbeabc22851cd947ced65d0b21f"
+        }
+      },
+      "missing_files": [],
+      "quality": {
+        "labels": {
+          "horizons": {
+            "120": {
+              "column": "label_congestion_120s",
+              "positive_rate": 0.966667,
+              "positive_rows": 3016
+            },
+            "60": {
+              "column": "label_congestion_60s",
+              "positive_rate": 0.966667,
+              "positive_rows": 3016
+            }
+          },
+          "missing_columns": [],
+          "required_columns": [
+            "label_congestion_60s",
+            "label_congestion_120s"
+          ],
+          "total_rows": 3120
+        },
+        "leakage_passed": true,
+        "splits": {
+          "gap_seconds": 5,
+          "hashes": {
+            "test_sha256": "61d5ca61e34ca990cb2457e58cda8ecc47c6d8688f0fbf325c83ce973cde7950",
+            "train_sha256": "5b41e11cb799409ce74f93af2d93ddb2fde50763ce4d65a68bf272957d2aba89",
+            "val_sha256": "4d64b7316da95fc24154cf4a708d6e0abcd14fbeabc22851cd947ced65d0b21f"
+          },
+          "rows": {
+            "gap_dropped": 260,
+            "test": 208,
+            "total": 3120,
+            "train": 2184,
+            "val": 468
+          }
+        }
+      },
+      "run_id": "smoke_phase1_logger_seed43",
+      "scenario": "demo",
+      "seed": 43
+    },
+    {
+      "checks": {
+        "leakage_passed": true,
+        "phase1_gate_ready": true,
+        "required_files_present": true,
+        "required_horizons_present": true
+      },
+      "files": {
+        "leakage_report": {
+          "bytes": 453,
+          "path": "data/splits/smoke_phase1_logger_seed47/leakage_report.json",
+          "sha256": "e2458c41542ffded3f92e0b21694bc8d946309a3ba1f9b39ec0e4e7084c0d0d9"
+        },
+        "processed_labels": {
+          "bytes": 113195,
+          "path": "data/processed/smoke_phase1_logger_seed47/rsu_horizon_labels.csv",
+          "sha256": "c4a1715d928d83e8780a8f424d0d3d573eacb8882f7ffb4ffcda7853eb0c7e32"
+        },
+        "raw_edge_flow": {
+          "bytes": 15466655,
+          "path": "data/raw/smoke_phase1_logger_seed47/edge_flow_1hz.csv",
+          "sha256": "4d33d9aaee7a59b7d80b6c43464c78a12c35744506f31fa63235d708f2762b5e"
+        },
+        "raw_logger_manifest": {
+          "bytes": 5277,
+          "path": "data/raw/smoke_phase1_logger_seed47/logger_manifest.json",
+          "sha256": "18e5d6a6d3dacdef64729081b138cebcea7c9931ca4caa61b61b57fa0ee24528"
+        },
+        "raw_rsu_features": {
+          "bytes": 100672,
+          "path": "data/raw/smoke_phase1_logger_seed47/rsu_features_1hz.csv",
+          "sha256": "4ddd8df299e92c1f46206d6cc3b6fbd2d13650b98028d268e9ad619b1b2b035a"
+        },
+        "split_manifest": {
+          "bytes": 657,
+          "path": "data/splits/smoke_phase1_logger_seed47/split_manifest.json",
+          "sha256": "a53a44359b940c2f8fe8c7ff0c69dd6887dc4fb1eb7500a27d3d046a66023936"
+        },
+        "split_test": {
+          "bytes": 8586,
+          "path": "data/splits/smoke_phase1_logger_seed47/test.csv",
+          "sha256": "ee4b30a4635e91a4e80b53818bf091b2aa60afbefc2b0c779ab913187944566b"
+        },
+        "split_train": {
+          "bytes": 76475,
+          "path": "data/splits/smoke_phase1_logger_seed47/train.csv",
+          "sha256": "dc0e94c30ab697809baaaf542f1653070f44164ee9cd71fddc31564dad4e942b"
+        },
+        "split_val": {
+          "bytes": 18433,
+          "path": "data/splits/smoke_phase1_logger_seed47/val.csv",
+          "sha256": "e5aafe22dd8db2d291471e62b07b66d032ec0b221a214569d24adf81ff01c230"
+        }
+      },
+      "missing_files": [],
+      "quality": {
+        "labels": {
+          "horizons": {
+            "120": {
+              "column": "label_congestion_120s",
+              "positive_rate": 0.95,
+              "positive_rows": 2964
+            },
+            "60": {
+              "column": "label_congestion_60s",
+              "positive_rate": 0.95,
+              "positive_rows": 2964
+            }
+          },
+          "missing_columns": [],
+          "required_columns": [
+            "label_congestion_60s",
+            "label_congestion_120s"
+          ],
+          "total_rows": 3120
+        },
+        "leakage_passed": true,
+        "splits": {
+          "gap_seconds": 5,
+          "hashes": {
+            "test_sha256": "ee4b30a4635e91a4e80b53818bf091b2aa60afbefc2b0c779ab913187944566b",
+            "train_sha256": "dc0e94c30ab697809baaaf542f1653070f44164ee9cd71fddc31564dad4e942b",
+            "val_sha256": "e5aafe22dd8db2d291471e62b07b66d032ec0b221a214569d24adf81ff01c230"
+          },
+          "rows": {
+            "gap_dropped": 260,
+            "test": 208,
+            "total": 3120,
+            "train": 2184,
+            "val": 468
+          }
+        }
+      },
+      "run_id": "smoke_phase1_logger_seed47",
+      "scenario": "demo",
+      "seed": 47
+    }
+  ],
+  "schema_version": "1.1",
+  "summary": {
+    "gate_ready_runs": 3,
+    "horizon_positive_rates": {
+      "120": 0.936111,
+      "60": 0.936111
+    },
+    "horizon_positive_rows": {
+      "120": 8762,
+      "60": 8762
+    },
+    "leakage_pass_runs": 3,
+    "missing_files_total": 0,
+    "run_count": 3,
+    "total_labeled_rows": 9360
+  }
+}

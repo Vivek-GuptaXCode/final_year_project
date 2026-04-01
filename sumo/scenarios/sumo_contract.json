@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "runner": {
+    "sumo_binary": "sumo",
+    "sumo_gui_binary": "sumo-gui",
+    "prefer_libsumo": true
+  },
+  "execution": {
+    "step_length_seconds": 1.0,
+    "default_max_steps": 3600,
+    "stop_when_no_vehicles": true
+  },
+  "seeds": [11, 17, 23, 31, 47],
+  "scenarios": {
+    "low": {
+      "sumocfg": "sumo/scenarios/low.sumocfg",
+      "description": "Low-demand SUMO scenario scaffold"
+    },
+    "medium": {
+      "sumocfg": "sumo/scenarios/medium.sumocfg",
+      "description": "Medium-demand SUMO scenario scaffold"
+    },
+    "high": {
+      "sumocfg": "sumo/scenarios/high.sumocfg",
+      "description": "High-demand SUMO scenario scaffold"
+    },
+    "demo": {
+      "sumocfg": "sumo/scenarios/city.sumocfg",
+      "description": "Hackathon demo default: real-city network from OpenStreetMap with mixed passenger and freight demand",
+      "gui_settings": "sumo/scenarios/city_3d.settings.xml",
+      "gui_use_osg_view": false
+    },
+    "city": {
+      "sumocfg": "sumo/scenarios/city.sumocfg",
+      "description": "Real-city network generated from OpenStreetMap with mixed passenger and freight demand",
+      "gui_settings": "sumo/scenarios/city_3d.settings.xml",
+      "gui_use_osg_view": false
+    }
+  }
+}

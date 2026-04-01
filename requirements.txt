@@ -1,6 +1,17 @@
-pygame
+# Core
+numpy
 networkx
+
+# Server
 flask
 flask-socketio
 python-socketio[client]
-dotenv
+python-dotenv
+
+# ML / Forecasting (Phase 2)
+scikit-learn
+lightgbm
+
+# Optional: GPU-accelerated models
+# xgboost
+# torch

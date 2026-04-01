@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-03-25 23:52:47 by Eclipse SUMO netconvert Version 1.18.0
+-->
+
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+
+    <input>
+        <osm-files value="/home/vivek/research/NIT%20hackathon/final_year_project/sumo/raw_osm/Bombay_roads_subset_small.osm.xml"/>
+    </input>
+
+    <output>
+        <output-file value="city_continuous.net.xml"/>
+    </output>
+
+    <processing>
+        <geometry.remove value="true"/>
+    </processing>
+
+    <edge_removal>
+        <remove-edges.by-vclass value="tram,rail_urban,rail_electric,bicycle,pedestrian"/>
+    </edge_removal>
+
+    <junctions>
+        <no-turnarounds value="true"/>
+    </junctions>
+
+</configuration>

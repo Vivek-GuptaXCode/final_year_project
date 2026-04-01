@@ -1,0 +1,6 @@
+{
+  "scenarios": ["demo", "low", "medium", "high"],
+  "seeds": [11, 17, 23],
+  "traffic_scales": [0.8, 1.0, 1.2],
+  "traffic_reduction_pcts": [20.0, 40.0]
+}

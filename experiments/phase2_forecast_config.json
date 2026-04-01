@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "phase": "phase2_forecasting",
+  "defaults": {
+    "processed_glob": "data/processed/smoke_phase1_logger*/rsu_horizon_labels.csv",
+    "target_column": "label_congestion_60s",
+    "n_splits": 5,
+    "test_size": 360,
+    "gap": 0,
+    "min_train_size": 1200,
+    "profile": "local_smoke",
+    "seed": 42
+  },
+  "profiles": {
+    "local_smoke": {
+      "max_rows": 5000,
+      "notes": "Quick local gating for script wiring and artifact generation."
+    },
+    "local_full": {
+      "max_rows": null,
+      "notes": "Use all local processed rows for complete baseline comparison."
+    }
+  }
+}

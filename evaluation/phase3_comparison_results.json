@@ -1,0 +1,555 @@
+{
+  "config": {
+    "low_confidence_threshold": 0.55,
+    "uncertainty_penalty_weight": 0.35,
+    "high_risk_score_threshold": 0.85,
+    "medium_risk_score_threshold": 0.45,
+    "max_reroute_fraction": 0.4
+  },
+  "scenarios": [
+    {
+      "scenario": "free_flow_sparse",
+      "vehicle_count": 3,
+      "avg_speed_mps": 12.0,
+      "emergency": false,
+      "actual_confidence_used": 0.516,
+      "baseline": {
+        "p_congestion": 0.116,
+        "confidence": 0.516,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.116,
+        "confidence": 0.516,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "travel_time",
+        "strategy": "confidence_fallback",
+        "fallback_triggered": true,
+        "risk_score": 0.1728
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "free_flow_moderate",
+      "vehicle_count": 8,
+      "avg_speed_mps": 10.0,
+      "emergency": false,
+      "actual_confidence_used": 0.6293,
+      "baseline": {
+        "p_congestion": 0.2293,
+        "confidence": 0.6293,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.2293,
+        "confidence": 0.6293,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.1427
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "medium_congestion",
+      "vehicle_count": 20,
+      "avg_speed_mps": 4.0,
+      "emergency": false,
+      "actual_confidence_used": 0.8667,
+      "baseline": {
+        "p_congestion": 0.5333,
+        "confidence": 0.8667,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.2,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.5333,
+        "confidence": 0.8667,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.1615
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "medium_high_confidence",
+      "vehicle_count": 20,
+      "avg_speed_mps": 4.0,
+      "emergency": false,
+      "actual_confidence_used": 0.8,
+      "baseline": {
+        "p_congestion": 0.5333,
+        "confidence": 0.8667,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.2,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.65,
+        "confidence": 0.8,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.1978
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "medium_low_confidence",
+      "vehicle_count": 20,
+      "avg_speed_mps": 4.0,
+      "emergency": false,
+      "actual_confidence_used": 0.48,
+      "baseline": {
+        "p_congestion": 0.5333,
+        "confidence": 0.8667,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.2,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.6,
+        "confidence": 0.48,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "travel_time",
+        "strategy": "confidence_fallback",
+        "fallback_triggered": true,
+        "risk_score": 0.3042
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "heavy_congestion",
+      "vehicle_count": 40,
+      "avg_speed_mps": 1.5,
+      "emergency": false,
+      "actual_confidence_used": 0.56,
+      "baseline": {
+        "p_congestion": 0.84,
+        "confidence": 0.56,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.35,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.84,
+        "confidence": 0.56,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.394,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.9481
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "heavy_high_confidence",
+      "vehicle_count": 40,
+      "avg_speed_mps": 1.5,
+      "emergency": false,
+      "actual_confidence_used": 0.85,
+      "baseline": {
+        "p_congestion": 0.84,
+        "confidence": 0.56,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.35,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.88,
+        "confidence": 0.85,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.365,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.8703
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "heavy_low_confidence",
+      "vehicle_count": 40,
+      "avg_speed_mps": 1.5,
+      "emergency": false,
+      "actual_confidence_used": 0.4,
+      "baseline": {
+        "p_congestion": 0.84,
+        "confidence": 0.56,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.35,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.85,
+        "confidence": 0.4,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.15,
+        "reroute_mode": "travel_time",
+        "strategy": "confidence_fallback",
+        "fallback_triggered": true,
+        "risk_score": 1.0
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "near_high_threshold",
+      "vehicle_count": 30,
+      "avg_speed_mps": 3.0,
+      "emergency": false,
+      "actual_confidence_used": 0.75,
+      "baseline": {
+        "p_congestion": 0.68,
+        "confidence": 0.72,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.2,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.68,
+        "confidence": 0.75,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.3497
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "just_below_high",
+      "vehicle_count": 25,
+      "avg_speed_mps": 5.0,
+      "emergency": false,
+      "actual_confidence_used": 0.72,
+      "baseline": {
+        "p_congestion": 0.5667,
+        "confidence": 0.8333,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 0.2,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.69,
+        "confidence": 0.72,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.2302
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "onset_low_p",
+      "vehicle_count": 5,
+      "avg_speed_mps": 11.0,
+      "emergency": false,
+      "actual_confidence_used": 0.7,
+      "baseline": {
+        "p_congestion": 0.1667,
+        "confidence": 0.5667,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.35,
+        "confidence": 0.7,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.1136
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "recovery_from_high",
+      "vehicle_count": 15,
+      "avg_speed_mps": 6.0,
+      "emergency": false,
+      "actual_confidence_used": 0.65,
+      "baseline": {
+        "p_congestion": 0.42,
+        "confidence": 0.82,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.5,
+        "confidence": 0.65,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.1781
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "emergency_1_vehicle",
+      "vehicle_count": 5,
+      "avg_speed_mps": 11.0,
+      "emergency": true,
+      "actual_confidence_used": 0.8,
+      "baseline": {
+        "p_congestion": 0.1667,
+        "confidence": 0.5667,
+        "risk_level": "low",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.3,
+        "confidence": 0.8,
+        "risk_level": "low",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false,
+        "risk_score": 0.0781
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "emergency_heavy",
+      "vehicle_count": 40,
+      "avg_speed_mps": 1.5,
+      "emergency": true,
+      "actual_confidence_used": 0.85,
+      "baseline": {
+        "p_congestion": 0.84,
+        "confidence": 0.56,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.9,
+        "confidence": 0.85,
+        "risk_level": "high",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false,
+        "risk_score": 0.8821
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "emergency_low_confidence",
+      "vehicle_count": 20,
+      "avg_speed_mps": 4.0,
+      "emergency": true,
+      "actual_confidence_used": 0.4,
+      "baseline": {
+        "p_congestion": 0.5333,
+        "confidence": 0.8667,
+        "risk_level": "medium",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.65,
+        "confidence": 0.4,
+        "risk_level": "low",
+        "reroute_enabled": true,
+        "reroute_fraction": 1.0,
+        "reroute_mode": "dijkstra",
+        "strategy": "emergency_override",
+        "fallback_triggered": false,
+        "risk_score": 0.3378
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    },
+    {
+      "scenario": "empty_rsu",
+      "vehicle_count": 0,
+      "avg_speed_mps": 0.0,
+      "emergency": false,
+      "actual_confidence_used": 0.9,
+      "baseline": {
+        "p_congestion": 0.4,
+        "confidence": 0.8,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "deterministic_surrogate",
+        "fallback_triggered": false
+      },
+      "phase3": {
+        "p_congestion": 0.0,
+        "confidence": 0.9,
+        "risk_level": "low",
+        "reroute_enabled": false,
+        "reroute_fraction": 0.0,
+        "reroute_mode": "gnn_effort",
+        "strategy": "risk_aware_primary",
+        "fallback_triggered": false,
+        "risk_score": 0.035
+      },
+      "checks": {
+        "reroute_enabled_ok": true,
+        "reroute_fraction_ok": true,
+        "fallback_correct": true,
+        "emergency_override_correct": true
+      }
+    }
+  ]
+}

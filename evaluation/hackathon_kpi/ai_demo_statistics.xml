@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-03-30 11:53:41 by Eclipse SUMO GUI Version 1.18.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="sumo/scenarios/../networks/city.net.xml"/>
+        <route-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_controlled_group.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_emergency_group.rou.xml"/>
+        <additional-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_rsu_pois.add.xml"/>
+        <junction-taz value="true"/>
+    </input>
+
+    <output>
+        <summary-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/ai_demo_summary.xml"/>
+        <tripinfo-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/ai_demo_tripinfo.xml"/>
+        <statistic-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/ai_demo_statistics.xml"/>
+    </output>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <scale value="1.3"/>
+    </processing>
+
+    <traci_server>
+        <remote-port value="40593"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="42"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="sumo/scenarios/city_3d.settings.xml"/>
+    </gui_only>
+
+</configuration>
+-->
+
+<statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
+    <performance clockBegin="1774851821.96" clockEnd="1774852629.75" clockDuration="807.79" traciDuration="359.95" realTimeFactor="1.87" vehicleUpdatesPerSecond="368.86" personUpdatesPerSecond="0.00" begin="0.00" end="1508.00" duration="1508.00"/>
+    <vehicles loaded="5041" inserted="1628" running="364" waiting="15"/>
+    <teleports total="64" jam="41" yield="21" wrongLane="2"/>
+    <safety collisions="0" emergencyStops="0" emergencyBraking="0"/>
+    <persons loaded="0" running="0" jammed="0"/>
+    <personTeleports total="0" abortWait="0" wrongDest="0"/>
+    <vehicleTripStatistics count="1264" routeLength="1010.33" speed="7.92" duration="147.49" waitingTime="39.80" timeLoss="67.29" departDelay="1.06" departDelayWaiting="-1.00" totalTravelTime="186430.00" totalDepartDelay="1336.34"/>
+    <pedestrianStatistics number="0" routeLength="0.00" duration="0.00" timeLoss="0.00"/>
+    <rideStatistics number="0"/>
+    <transportStatistics number="0"/>
+</statistics>

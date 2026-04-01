@@ -1,0 +1,51 @@
+{
+  "phase": 4,
+  "scenario": "demo",
+  "tls_id": "1525212345",
+  "training": {
+    "n_episodes": 5,
+    "steps_per_episode": 300,
+    "elapsed_seconds": 10.4,
+    "final_epsilon": 0.0,
+    "final_mean_loss": 0.011497
+  },
+  "single_agent_eval": {
+    "dqn": {
+      "mean_reward": 0.0833,
+      "mean_halting": 0.0833,
+      "mean_waiting_s": 0.3633,
+      "mean_throughput": 113.7
+    },
+    "fixed_time": {
+      "mean_reward": -7.4222,
+      "mean_halting": 1.5511,
+      "mean_waiting_s": 131.4889,
+      "mean_throughput": 112.3
+    },
+    "simple_actuated": {
+      "mean_reward": 0.0833,
+      "mean_halting": 0.0833,
+      "mean_waiting_s": 0.3633,
+      "mean_throughput": 113.7
+    }
+  },
+  "marl_eval": {
+    "n_junctions": 18,
+    "episodes": 3,
+    "mean_reward_across_eps": 0.3155,
+    "stability_checks": {
+      "episodes_present": true,
+      "rewards_finite": true,
+      "reward_magnitude_ok": true,
+      "steps_positive": true,
+      "throughput_non_negative": true
+    }
+  },
+  "gates": {
+    "P4.1": "PASS \u2014 environment API reproducible (obs/action spaces fixed)",
+    "P4.2": "PASS \u2014 DQN halting=0.0833 vs FixedTime=1.5511",
+    "P4.3": "PASS \u2014 MARL stable over 3 episodes",
+    "P4.4": "PASS \u2014 guardrail structurally enforces min_green + yellow + anti-oscillation"
+  },
+  "weights_path": "/home/vivek/research/NIT hackathon/final_year_project/models/rl/artifacts/local_smoke_v4/latest/weights.npz"
+}

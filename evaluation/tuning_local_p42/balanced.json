@@ -1,0 +1,82 @@
+{
+  "phase": 4,
+  "scenario": "demo",
+  "tls_id": "1525212345",
+  "training": {
+    "mode": "all_tls_shared",
+    "n_episodes": 5,
+    "steps_per_episode": 300,
+    "train_every": 4,
+    "train_updates_per_step": 1,
+    "n_training_junctions": 18,
+    "training_tls_ids": [
+      "1525212345",
+      "246771374",
+      "945141768",
+      "945142211",
+      "962966189",
+      "GS_2391105461",
+      "GS_cluster_1560223815_1560223847_301292612_56231397",
+      "GS_cluster_1704693650_1866350919_38920778_671564358",
+      "cluster_101333380_1652675105_1704693841_2169462573_3366619456_3366620150_3366620151_3366620152_3366620154_3366620155_3366620157_3646631965_5226716099_5226720613_5226721573",
+      "cluster_1560223404_2335739502_3273797701",
+      "cluster_1560224191_1560224195_2697454310_443598395",
+      "cluster_261705708_987195315",
+      "cluster_2697454309_945141621",
+      "cluster_2697454311_2697454312",
+      "cluster_5478343753_5478343754",
+      "joinedS_0",
+      "joinedS_1",
+      "joinedS_2"
+    ],
+    "elapsed_seconds": 208.6,
+    "epsilon_start": 1.0,
+    "epsilon_min": 0.05,
+    "epsilon_decay": 0.9998,
+    "final_epsilon": 0.9279,
+    "reward_halting_weight": 1.2,
+    "reward_throughput_weight": 0.4,
+    "reward_waiting_weight": 0.0,
+    "final_mean_loss": 0.038059
+  },
+  "single_agent_eval": {
+    "dqn": {
+      "mean_reward": -0.1,
+      "mean_halting": 0.0833,
+      "mean_waiting_s": 0.3633,
+      "mean_throughput": 113.7
+    },
+    "fixed_time": {
+      "mean_reward": -0.16,
+      "mean_halting": 0.0933,
+      "mean_waiting_s": 0.4156,
+      "mean_throughput": 112.3
+    },
+    "simple_actuated": {
+      "mean_reward": -0.1,
+      "mean_halting": 0.0833,
+      "mean_waiting_s": 0.3633,
+      "mean_throughput": 113.7
+    }
+  },
+  "marl_eval": {
+    "n_junctions": 18,
+    "episodes": 3,
+    "mean_reward_across_eps": 0.0298,
+    "controller_mode": "all_rl_dqn",
+    "stability_checks": {
+      "episodes_present": true,
+      "rewards_finite": true,
+      "reward_magnitude_ok": true,
+      "steps_positive": true,
+      "throughput_non_negative": true
+    }
+  },
+  "gates": {
+    "P4.1": "PASS \u2014 environment API reproducible (obs/action spaces fixed)",
+    "P4.2": "PASS \u2014 DQN halting=0.0833 vs FixedTime=0.0933",
+    "P4.3": "PASS \u2014 MARL stable over 3 episodes",
+    "P4.4": "PASS \u2014 guardrail structurally enforces min_green + yellow + anti-oscillation"
+  },
+  "weights_path": "/home/vivek/research/NIT hackathon/final_year_project/models/rl/artifacts/tuning_balanced/latest/weights.npz"
+}

@@ -1,6 +1,61 @@
-venv/
-
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+
+# Environment
+venv/
+env/
 .env
+.python-version
+
+# Model artifacts (large binaries)
+models/forecast/artifacts/*/model.pkl
+models/forecast/artifacts/*/model.json
+models/forecast/artifacts/*/model.pt
+models/forecast/artifacts/*/scaler.pkl
+
+# SUMO generated files
+trips.trips.xml
+sumo/scenarios/*_rsu_pois.add.xml
+sumo/scenarios/*_controlled_group.rou.xml
+sumo/scenarios/*_emergency_group.rou.xml
+*.tripinfo.xml
+*.emission.xml
+
+# Large data files (regenerate with data pipeline)
+data/raw/
+data/splits/
+data/exports/*.tar.gz
+data/processed/phase2sweep_*/
+data/processed/phase2_selected_*/
+data/processed/phase2_sweeps/
+
+# Large OSM source files
+sumo/raw_osm/
+
+# Large SUMO network files (keep smaller ones)
+sumo/networks/city_large.net.xml
+
+# Route audit logs (runtime generated)
+data/raw/route_audit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-03-30 08:47:09 by Eclipse SUMO sumo Version 1.18.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="sumo/scenarios/../networks/city.net.xml"/>
+        <route-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_controlled_group.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_emergency_group.rou.xml"/>
+        <junction-taz value="true"/>
+    </input>
+
+    <output>
+        <summary-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_summary.xml"/>
+        <tripinfo-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_tripinfo.xml"/>
+        <statistic-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_compare_statistics.xml"/>
+    </output>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <scale value="1.8"/>
+    </processing>
+
+    <traci_server>
+        <remote-port value="57455"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="42"/>
+    </random_number>
+
+</configuration>
+-->
+
+<statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
+    <performance clockBegin="1774840629.52" clockEnd="1774840692.38" clockDuration="62.87" traciDuration="62.28" realTimeFactor="2.05" vehicleUpdatesPerSecond="152.25" personUpdatesPerSecond="0.00" begin="0.00" end="129.00" duration="129.00"/>
+    <vehicles loaded="247" inserted="155" running="136" waiting="4"/>
+    <teleports total="0" jam="0" yield="0" wrongLane="0"/>
+    <safety collisions="0" emergencyStops="0" emergencyBraking="0"/>
+    <persons loaded="0" running="0" jammed="0"/>
+    <personTeleports total="0" abortWait="0" wrongDest="0"/>
+    <vehicleTripStatistics count="19" routeLength="732.14" speed="10.12" duration="71.89" waitingTime="1.68" timeLoss="14.27" departDelay="0.55" departDelayWaiting="-1.00" totalTravelTime="1366.00" totalDepartDelay="10.50"/>
+    <pedestrianStatistics number="0" routeLength="0.00" duration="0.00" timeLoss="0.00"/>
+    <rideStatistics number="0"/>
+    <transportStatistics number="0"/>
+</statistics>

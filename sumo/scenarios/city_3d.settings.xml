@@ -1,0 +1,16 @@
+<viewsettings>
+    <scheme name="real world">
+        <pois
+            poiTextParam="name"
+            poiText_show="true"
+            poiText_size="110"
+            poiText_color="0,90,0,255"
+            poiText_bgColor="255,255,255,180"
+            poiText_constantSize="true"
+            poiText_onlySelected="false"
+            poiName_show="false"
+            poiType_show="false"/>
+    </scheme>
+    <delay value="30"/>
+    <viewport zoom="100" x="1314" y="1667" centerX="1314" centerY="1667"/>
+</viewsettings>

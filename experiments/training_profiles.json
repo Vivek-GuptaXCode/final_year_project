@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "profiles": {
+    "local_smoke": {
+      "description": "Small local run for pipeline and model sanity checks.",
+      "max_rows": 5000,
+      "epochs": 1,
+      "batch_size": 16,
+      "cross_validation": false,
+      "seeds": [11],
+      "purpose": "debug_only"
+    },
+    "local_full": {
+      "description": "Primary local training profile for benchmark reporting.",
+      "max_rows": null,
+      "epochs": 30,
+      "batch_size": 64,
+      "cross_validation": true,
+      "seeds": [11, 17, 23, 31, 47],
+      "purpose": "publication"
+    }
+  }
+}

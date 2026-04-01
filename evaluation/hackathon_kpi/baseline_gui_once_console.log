@@ -1,0 +1,44 @@
+[SUMO] Traffic scale after 0.0% reduction: 1.8000
+[SUMO] Controlled RSU alias (source): RSU_A -> cluster_101333380_1652675105_1704693841_2169462573_3366619456_3366620150_3366620151_3366620152_3366620154_3366620155_3366620157_3646631965_5226716099_5226720613_5226721573
+[SUMO] Controlled RSU alias (destination): RSU_K -> 1560224927
+[SUMO] Controlled RSU alias (checkpoint): RSU_C -> cluster_2697454314_2697454315_3246050920_3246050921_38918157_493585795_567607201_57343487_945141958_945142201
+[SUMO] Controlled RSU alias (checkpoint): RSU_F -> cluster_1560223745_1568241351_1568241357_1568241362_1568241369_671564302
+[SUMO] Controlled cohort: 25 vehicles, mode=junction, source=cluster_101333380_1652675105_1704693841_2169462573_3366619456_3366620150_3366620151_3366620152_3366620154_3366620155_3366620157_3646631965_5226716099_5226720613_5226721573, destination=1560224927, via=['cluster_2697454314_2697454315_3246050920_3246050921_38918157_493585795_567607201_57343487_945141958_945142201', 'cluster_1560223745_1568241351_1568241357_1568241362_1568241369_671564302']
+[SUMO] Emergency RSU alias (source): RSU_B -> cluster_1560223404_2335739502_3273797701
+[SUMO] Emergency RSU alias (destination): RSU_M -> cluster_1292264941_1292264943_1301707116_1304505782
+[SUMO] Emergency RSU alias (checkpoint): RSU_D -> cluster_1704693650_1866350919_38920778_671564358
+[SUMO] Emergency RSU alias (checkpoint): RSU_G -> cluster_1560223826_5548037055_5548037348
+[SUMO] Emergency cohort: 9 vehicles (base=3, x3), mode=junction, source=cluster_1560223404_2335739502_3273797701, destination=cluster_1292264941_1292264943_1301707116_1304505782, via=['cluster_1704693650_1866350919_38920778_671564358', 'cluster_1560223826_5548037055_5548037348']
+[SUMO] RSU overlays: selected 26 intersections out of 299 candidates (min-inc-lanes=4, min-spacing=216.0m, max-count=40).
+[SUMO] KPI outputs enabled: statistics=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_statistics.xml, summary=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_summary.xml, tripinfo=/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_tripinfo.xml
+[SUMO] Scenario: demo
+[SUMO] Config: sumo/scenarios/city.sumocfg
+[SUMO] Command: ['sumo-gui', '-c', 'sumo/scenarios/city.sumocfg', '--seed', '42', '--step-length', '1.0', '--gui-settings-file', 'sumo/scenarios/city_3d.settings.xml', '--route-files', '/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/city_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_controlled_group.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_emergency_group.rou.xml', '--additional-files', '/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/demo_rsu_pois.add.xml', '--scale', '1.8', '--junction-taz', 'true', '--statistic-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_statistics.xml', '--summary-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_summary.xml', '--tripinfo-output', '/home/vivek/research/NIT hackathon/final_year_project/evaluation/hackathon_kpi/baseline_gui_once_tripinfo.xml']
+[SUMO] Max steps: 1800
+ Retrying in 1 seconds
+[SUMO][LOGGER] Enabled 1 Hz logging: run_id=hackathon_baseline_gui_once rsu_count=26 edge_count=1943 dir=/home/vivek/research/NIT hackathon/final_year_project/data/raw/hackathon_baseline_gui_once
+[SUMO][MARKERS] deep_blue_controlled=1 bright_yellow_emergency=1
+[SUMO][MARKERS] deep_blue_controlled=3 bright_yellow_emergency=1
+[SUMO][MARKERS] deep_blue_controlled=5 bright_yellow_emergency=1
+[SUMO][MARKERS] deep_blue_controlled=6 bright_yellow_emergency=2
+[SUMO][MARKERS] deep_blue_controlled=6 bright_yellow_emergency=1
+[SUMO][MARKERS] deep_blue_controlled=8 bright_yellow_emergency=1
+Traceback (most recent call last):
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 2172, in <module>
+    main()
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/run_sumo_pipeline.py", line 2139, in main
+    executed_steps = adapter.run_step_loop(
+                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/vivek/research/NIT hackathon/final_year_project/sumo/sumo_adapter.py", line 176, in run_step_loop
+    self._traci.simulationStep()
+  File "/usr/share/sumo/tools/traci/main.py", line 198, in simulationStep
+    connection.check().simulationStep(step)
+  File "/usr/share/sumo/tools/traci/connection.py", line 368, in simulationStep
+    result = self._sendCmd(tc.CMD_SIMSTEP, None, None, "D", step)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 231, in _sendCmd
+    return self._sendExact()
+           ^^^^^^^^^^^^^^^^^
+  File "/usr/share/sumo/tools/traci/connection.py", line 137, in _sendExact
+    raise FatalTraCIError("Connection closed by SUMO.")
+traci.exceptions.FatalTraCIError: Connection closed by SUMO.
