@@ -62,6 +62,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from controllers.rl.dqn_agent import DQNAgent
+from controllers.rl.improved_dqn_agent import ImprovedDQNAgent
 from controllers.rl.baselines import FixedTimePolicy, SimpleActuatedPolicy, make_baseline
 from controllers.rl.safety_guardrails import GuardrailConfig
 from controllers.rl.traffic_signal_env import (
@@ -227,7 +228,7 @@ def _run_multi_agent_episode(
     sumo_binary: str,
     sumocfg: Path,
     tls_ids: list[str],
-    agents: dict[str, DQNAgent | SimpleActuatedPolicy],
+    agents: dict[str, DQNAgent | ImprovedDQNAgent | SimpleActuatedPolicy],
     max_steps: int,
     seed: int,
     env_cfg: EnvConfig | None = None,
@@ -260,7 +261,7 @@ def _run_multi_agent_episode(
             for tid in tls_ids:
                 agent = agents[tid]
                 obs = obs_map[tid]
-                if isinstance(agent, DQNAgent):
+                if isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
                     obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
                     actions[tid] = agent.select_action(obs_input, greedy=True)
                 else:
@@ -299,7 +300,7 @@ def _run_shared_multi_agent_train_episode(
     sumo_binary: str,
     sumocfg: Path,
     tls_ids: list[str],
-    shared_agent: DQNAgent,
+    shared_agent: DQNAgent | ImprovedDQNAgent,
     max_steps: int,
     seed: int,
     *,
@@ -450,6 +451,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reward-waiting-weight", type=float, default=None)
     p.add_argument("--min-green", type=float, default=15.0,
                    help="Minimum green time enforced by guardrail (seconds)")
+    p.add_argument("--use-improved-dqn", action="store_true",
+                   help="Use ImprovedDQNAgent with Double DQN and larger network")
+    p.add_argument("--tau", type=float, default=0.005,
+                   help="Soft target update coefficient (for improved DQN)")
+    p.add_argument("--grad-clip", type=float, default=10.0,
+                   help="Gradient clipping threshold (for improved DQN)")
     return p.parse_args()
 
 
@@ -644,17 +651,34 @@ def main() -> None:
     )
 
     # ── Build DQN agent ────────────────────────────────────────────────────
-    agent = DQNAgent(
-        obs_dim=OBS_DIM,
-        n_actions=2,
-        hidden_dim=args.hidden_dim,
-        lr=args.lr,
-        gamma=args.gamma,
-        epsilon_start=args.epsilon_start,
-        epsilon_min=args.epsilon_min,
-        epsilon_decay=epsilon_decay,
-        seed=args.seed,
-    )
+    if args.use_improved_dqn:
+        print("[P4] Using ImprovedDQNAgent (Double DQN, 3-layer MLP)")
+        agent = ImprovedDQNAgent(
+            obs_dim=OBS_DIM,
+            n_actions=2,
+            hidden_dims=(128, 64),
+            lr=args.lr,
+            gamma=args.gamma,
+            epsilon_start=args.epsilon_start,
+            epsilon_min=args.epsilon_min,
+            epsilon_decay=epsilon_decay,
+            tau=args.tau,
+            grad_clip=args.grad_clip,
+            double_dqn=True,
+            seed=args.seed,
+        )
+    else:
+        agent = DQNAgent(
+            obs_dim=OBS_DIM,
+            n_actions=2,
+            hidden_dim=args.hidden_dim,
+            lr=args.lr,
+            gamma=args.gamma,
+            epsilon_start=args.epsilon_start,
+            epsilon_min=args.epsilon_min,
+            epsilon_decay=epsilon_decay,
+            seed=args.seed,
+        )
 
     # ── Training loop ──────────────────────────────────────────────────────
     print("\n[P4] ── Training ──────────────────────────────────────────")
