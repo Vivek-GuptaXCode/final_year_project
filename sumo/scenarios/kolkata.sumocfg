@@ -1,0 +1,11 @@
+<configuration>
+    <input>
+        <net-file value="../networks/kolkata.net.xml"/>
+        <route-files value="../routes/kolkata_passenger.rou.xml,../routes/kolkata_freight.rou.xml"/>
+        <additional-files value="../networks/kolkata.poly.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+</configuration>

@@ -35,6 +35,12 @@
       "description": "Real-city network generated from OpenStreetMap with mixed passenger and freight demand",
       "gui_settings": "sumo/scenarios/city_3d.settings.xml",
       "gui_use_osg_view": false
+    },
+    "kolkata": {
+      "sumocfg": "sumo/scenarios/kolkata.sumocfg",
+      "description": "Kolkata city network (22.57-22.60°N, 88.36-88.38°E) from OpenStreetMap with mixed traffic demand",
+      "gui_settings": "sumo/scenarios/city_3d.settings.xml",
+      "gui_use_osg_view": false
     }
   }
 }

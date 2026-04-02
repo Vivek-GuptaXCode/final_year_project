@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--scenario",
-        choices=["low", "medium", "high", "demo", "city"],
+        choices=["low", "medium", "high", "demo", "city", "kolkata"],
         default="demo",
         help="Scenario name from contract (default: demo -> real-city 3D hackathon flow).",
     )

@@ -71,6 +71,9 @@ python3 server.py
 # Smoke test (GUI, 2 minutes)
 python3 sumo/run_sumo_pipeline.py --scenario demo --gui --max-steps 120
 
+# Kolkata city map (large network)
+python3 sumo/run_sumo_pipeline.py --scenario kolkata --gui --max-steps 300 --traffic-scale 0.5
+
 # Full pipeline with server uplink + emergency priority
 python3 sumo/run_sumo_pipeline.py \
   --scenario demo --gui --max-steps 1800 \
