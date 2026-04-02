@@ -128,7 +128,45 @@ The target of 95% accuracy was investigated thoroughly:
 
 ---
 
-## 7. Phase 2 Gate Summary
+## 7. V3 Lite Feature Set (38 features)
+
+### V3 Improvements Attempted (2026-04-02)
+
+Added 7 new features to the V2 31-feature set:
+
+| Feature | Type | Importance Rank |
+|---------|------|-----------------|
+| `ema_vehicle_count` | Exponential moving average (α=0.3) | **#2** (10719) |
+| `hour_sin` | Sin encoding of hour-of-day | **#6** (6209) |
+| `hour_cos` | Cos encoding of hour-of-day | **#9** (4286) |
+| `velocity_accel_ratio` | diff1/diff2 clamped to [-10,10] | Mid (2177) |
+| `roll3_mean_vehicle` | 3-step rolling mean | Low (1884) |
+| `roll5_median_vehicle` | 5-step rolling median | Low (399) |
+| `roll5_range_vehicle` | 5-step rolling range | Low (341) |
+
+### V3 Lite Results (Held-out, 31,912 rows)
+
+| Metric | V2 (31 features) | V3 Lite (38 features) |
+|--------|-----------------|----------------------|
+| ROC-AUC | 0.9587 | 0.9494 |
+| Accuracy | 90.14% | 89.53% |
+| Precision | 95.26% | 94.03% |
+| Recall | 89.31% | 89.62% |
+| F1 | 92.19% | 91.77% |
+
+**Conclusion:** V3 Lite performs comparably to V2 but does not significantly improve accuracy. The new EMA and time encoding features are predictive (#2 and #6 importance), but the model has reached its ceiling with current data diversity.
+
+### Why V3 Spatial Features Were Dropped
+
+Initial V3 included cross-RSU spatial features (neighbor congestion count, spatial gradient). These **degraded performance** because:
+1. RSU neighbor topology was approximated (all RSUs as neighbors), adding noise
+2. True road network adjacency information is not available in current data format
+
+**To unlock further accuracy gains**, proper spatial topology must be incorporated into the training data pipeline.
+
+---
+
+## 8. Phase 2 Gate Summary
 
 | Gate | Requirement | Result |
 |------|-------------|--------|
@@ -138,3 +176,13 @@ The target of 95% accuracy was investigated thoroughly:
 | P2.4 | Server/RSU API accepts forecast + uncertainty fields | **PASS** |
 
 **Phase 2 status: ALL GATES PASS. Ready to proceed to Phase 3.**
+
+---
+
+## 9. Artifacts
+
+| Artifact | Path |
+|----------|------|
+| V2 Model (production) | `models/forecast/artifacts/phase2_improved_20260328T172912Z/` |
+| V3 Lite Model (experimental) | `models/forecast/artifacts/phase2_v3_lite_20260402T001549Z/` |
+| V3 Feature Builder | `models/forecast/feature_builder_v3_lite.py` |
