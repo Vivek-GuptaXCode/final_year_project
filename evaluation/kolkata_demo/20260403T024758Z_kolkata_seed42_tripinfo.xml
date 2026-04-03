@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-04-03 08:18:02 by Eclipse SUMO GUI Version 1.18.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="sumo/scenarios/../networks/kolkata.net.xml"/>
+        <route-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/kolkata_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/kolkata_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/kolkata_emergency_group.rou.xml"/>
+        <additional-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/networks/kolkata.poly.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/kolkata_rsu_pois.add.xml"/>
+        <junction-taz value="true"/>
+    </input>
+
+    <output>
+        <summary-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_summary.xml"/>
+        <tripinfo-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_tripinfo.xml"/>
+        <tripinfo-output.write-unfinished value="true"/>
+        <statistic-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_statistics.xml"/>
+    </output>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <scale value="0.8"/>
+    </processing>
+
+    <traci_server>
+        <remote-port value="39261"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="42"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="sumo/scenarios/city_3d.settings.xml"/>
+    </gui_only>
+
+</configuration>
+-->
+
+<tripinfos xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/tripinfo_file.xsd">
+    <tripinfo id="p_0" depart="0.00" departLane="104227908_0" departPos="42.06" departSpeed="2.64" departDelay="0.00" arrival="-1.00" arrivalLane="" arrivalPos="-1.00" arrivalSpeed="-1.00" duration="3.00" routeLength="4.46" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="0.31" rerouteNo="0" devices="tripinfo_p_0" vType="DEFAULT_VEHTYPE" speedFactor="0.95" vaporized="end"/>
+    <tripinfo id="t_0" depart="0.00" departLane="-102825250#0_0" departPos="14.28" departSpeed="3.65" departDelay="0.00" arrival="-1.00" arrivalLane="" arrivalPos="-1.00" arrivalSpeed="-1.00" duration="3.00" routeLength="6.73" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="0.93" rerouteNo="0" devices="tripinfo_t_0" vType="t__truck" speedFactor="0.94" vaporized="end"/>
+</tripinfos>

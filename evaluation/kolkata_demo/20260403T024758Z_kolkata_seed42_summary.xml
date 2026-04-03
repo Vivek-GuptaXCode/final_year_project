@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-04-03 08:18:02 by Eclipse SUMO GUI Version 1.18.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="sumo/scenarios/../networks/kolkata.net.xml"/>
+        <route-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/kolkata_passenger.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/routes/kolkata_freight.rou.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/kolkata_emergency_group.rou.xml"/>
+        <additional-files value="/home/vivek/research/NIT hackathon/final_year_project/sumo/networks/kolkata.poly.xml,/home/vivek/research/NIT hackathon/final_year_project/sumo/scenarios/kolkata_rsu_pois.add.xml"/>
+        <junction-taz value="true"/>
+    </input>
+
+    <output>
+        <summary-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_summary.xml"/>
+        <tripinfo-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_tripinfo.xml"/>
+        <tripinfo-output.write-unfinished value="true"/>
+        <statistic-output value="/home/vivek/research/NIT hackathon/final_year_project/evaluation/kolkata_demo/20260403T024758Z_kolkata_seed42_statistics.xml"/>
+    </output>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <scale value="0.8"/>
+    </processing>
+
+    <traci_server>
+        <remote-port value="39261"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="42"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="sumo/scenarios/city_3d.settings.xml"/>
+    </gui_only>
+
+</configuration>
+-->
+
+<summary xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/summary_file.xsd">
+    <step time="0.00" loaded="5" inserted="2" running="2" waiting="0" ended="1" arrived="0" collisions="0" teleports="0" halting="0" stopped="0" meanWaitingTime="0.00" meanTravelTime="0.00" meanSpeed="3.14" meanSpeedRelative="0.56" duration="0"/>
+    <step time="1.00" loaded="5" inserted="2" running="2" waiting="0" ended="1" arrived="0" collisions="0" teleports="0" halting="0" stopped="0" meanWaitingTime="0.00" meanTravelTime="0.00" meanSpeed="2.82" meanSpeedRelative="0.44" duration="0"/>
+    <step time="2.00" loaded="5" inserted="2" running="2" waiting="0" ended="1" arrived="0" collisions="0" teleports="0" halting="0" stopped="0" meanWaitingTime="0.00" meanTravelTime="0.00" meanSpeed="2.77" meanSpeedRelative="0.51" duration="0"/>
+</summary>
