@@ -298,13 +298,15 @@ def _run_sumo_with_config(
         env["HYBRID_ENABLE_FORECAST_MODEL"] = "true"
     if fusion_cfg.routing_enabled:
         env["HYBRID_ENABLE_PHASE3_ROUTING"] = "true"
-        env.setdefault("HYBRID_P3_HIGH_RISK_SCORE", "0.82")
-        env.setdefault("HYBRID_P3_MEDIUM_RISK_SCORE", "0.45")
-        env.setdefault("HYBRID_P3_MAX_REROUTE_FRACTION", "0.18")
-        env.setdefault("HYBRID_P3_LOW_CONFIDENCE_THRESHOLD", "0.62")
-        env.setdefault("HYBRID_REROUTE_MIN_CONF_FLOOR", "0.65")
-        env.setdefault("HYBRID_REROUTE_FRACTION_CAP", "0.12")
-        env.setdefault("HYBRID_REROUTE_COOLDOWN_SECONDS", "30.0")
+        # Conservative parameters to avoid route oscillation
+        # Key insight: Rerouting too many vehicles creates new congestion
+        env.setdefault("HYBRID_P3_HIGH_RISK_SCORE", "0.82")  # High threshold - only severe congestion
+        env.setdefault("HYBRID_P3_MEDIUM_RISK_SCORE", "0.55")  # Medium threshold
+        env.setdefault("HYBRID_P3_MAX_REROUTE_FRACTION", "0.10")  # Cap at 10% - avoid herding
+        env.setdefault("HYBRID_P3_LOW_CONFIDENCE_THRESHOLD", "0.60")  # Require confidence
+        env.setdefault("HYBRID_REROUTE_MIN_CONF_FLOOR", "0.55")  # Floor for forecast
+        env.setdefault("HYBRID_REROUTE_FRACTION_CAP", "0.08")  # Very conservative cap
+        env.setdefault("HYBRID_REROUTE_COOLDOWN_SECONDS", "45.0")  # Longer cooldown
 
     timeout_seconds = max(600, int(max_steps * 2.5))
     

@@ -1,0 +1,344 @@
+{
+  "scenario": "city",
+  "n_seeds": 5,
+  "max_steps": 2400,
+  "traffic_scale": 3.0,
+  "server_url": "http://127.0.0.1:5000",
+  "signal_policy": {
+    "use_rl_weights": false,
+    "reason": "RL model skipped (obs_dim=42) for multi-junction Phase 5; using SimpleActuated fallback",
+    "model_dir": "/home/vivek/research/NIT hackathon/final_year_project/models/rl/artifacts"
+  },
+  "ablations": {
+    "Full Hybrid System": {
+      "name": "Full Hybrid System",
+      "description": "All subsystems enabled with coordination",
+      "mode": "full_hybrid",
+      "forecast_enabled": true,
+      "routing_enabled": true,
+      "signal_enabled": true,
+      "coordination_enabled": true,
+      "expected_behavior": "Best overall performance through coordinated pre-emptive action",
+      "hypothesis": "Coordination between subsystems provides synergistic benefit beyond individual contributions"
+    },
+    "No AI (Fixed-Time Baseline)": {
+      "name": "No AI (Fixed-Time Baseline)",
+      "description": "No AI systems - fixed-time signals, no rerouting",
+      "mode": "no_ai",
+      "forecast_enabled": false,
+      "routing_enabled": false,
+      "signal_enabled": false,
+      "coordination_enabled": false,
+      "expected_behavior": "Traditional traffic control without AI enhancement",
+      "hypothesis": "AI systems provide measurable improvement over traditional control"
+    }
+  },
+  "statistics": {
+    "Full Hybrid System": {
+      "travel_time_s": {
+        "mean": 333.873,
+        "std": 17.2,
+        "ci_lower": 318.797,
+        "ci_upper": 348.95,
+        "n": 5
+      },
+      "waiting_time_s": {
+        "mean": 217.127,
+        "std": 17.066,
+        "ci_lower": 202.168,
+        "ci_upper": 232.086,
+        "n": 5
+      },
+      "throughput": {
+        "mean": 1747.04,
+        "std": 93.992,
+        "ci_lower": 1664.653,
+        "ci_upper": 1829.428,
+        "n": 5
+      },
+      "n_runs": 5,
+      "n_successful": 5
+    },
+    "No AI (Fixed-Time Baseline)": {
+      "travel_time_s": {
+        "mean": 342.787,
+        "std": 10.368,
+        "ci_lower": 333.699,
+        "ci_upper": 351.875,
+        "n": 5
+      },
+      "waiting_time_s": {
+        "mean": 225.196,
+        "std": 11.423,
+        "ci_lower": 215.184,
+        "ci_upper": 235.209,
+        "n": 5
+      },
+      "throughput": {
+        "mean": 1768.757,
+        "std": 59.448,
+        "ci_lower": 1716.648,
+        "ci_upper": 1820.865,
+        "n": 5
+      },
+      "n_runs": 5,
+      "n_successful": 5
+    }
+  },
+  "gates": {
+    "P5.1": {
+      "status": "PASS",
+      "metric": "travel_time_reduction",
+      "improvement_pct": 2.6,
+      "full_hybrid": 333.873,
+      "baseline": 342.787
+    },
+    "P5.2": {
+      "status": "PARTIAL",
+      "contributions": {
+        "No AI (Fixed-Time Baseline)": 2.67
+      },
+      "description": "Positive % = subsystem contributes (ablation worse than full)"
+    },
+    "P5.3": {
+      "status": "PASS",
+      "description": "Failure cases documented in ablation results"
+    }
+  },
+  "raw_results": {
+    "Full Hybrid System": [
+      {
+        "ablation": "Full Hybrid System",
+        "seed": 42,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 360.1666666666667,
+          "mean_waiting_time_s": 242.14772727272728,
+          "vehicles_completed": 1056,
+          "vehicles_total": 4018,
+          "throughput": 1584.660275114631,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 2,
+          "signal_switches": 84,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2399.0,
+          "wall_time_s": 248.64932057900296
+        }
+      },
+      {
+        "ablation": "Full Hybrid System",
+        "seed": 43,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 313.86264656616413,
+          "mean_waiting_time_s": 195.214405360134,
+          "vehicles_completed": 1194,
+          "vehicles_total": 4077,
+          "throughput": 1793.2415519399249,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 3,
+          "signal_switches": 82,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2397.0,
+          "wall_time_s": 236.88984320900636
+        }
+      },
+      {
+        "ablation": "Full Hybrid System",
+        "seed": 44,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 334.63781512605044,
+          "mean_waiting_time_s": 217.9361344537815,
+          "vehicles_completed": 1190,
+          "vehicles_total": 4092,
+          "throughput": 1786.488740617181,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 5,
+          "signal_switches": 46,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2398.0,
+          "wall_time_s": 234.02922030199989
+        }
+      },
+      {
+        "ablation": "Full Hybrid System",
+        "seed": 45,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 336.1028277634961,
+          "mean_waiting_time_s": 220.19023136246787,
+          "vehicles_completed": 1167,
+          "vehicles_total": 4077,
+          "throughput": 1751.2296790329303,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 3,
+          "signal_switches": 56,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2399.0,
+          "wall_time_s": 243.73271599299915
+        }
+      },
+      {
+        "ablation": "Full Hybrid System",
+        "seed": 46,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 324.5960264900662,
+          "mean_waiting_time_s": 210.14735099337747,
+          "vehicles_completed": 1208,
+          "vehicles_total": 4083,
+          "throughput": 1819.5815899581592,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 5,
+          "signal_switches": 48,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2390.0,
+          "wall_time_s": 221.67763629799447
+        }
+      }
+    ],
+    "No AI (Fixed-Time Baseline)": [
+      {
+        "ablation": "No AI (Fixed-Time Baseline)",
+        "seed": 42,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 357.68992932862193,
+          "mean_waiting_time_s": 240.339222614841,
+          "vehicles_completed": 1132,
+          "vehicles_total": 4034,
+          "throughput": 1700.125156445557,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 0,
+          "signal_switches": 0,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2397.0,
+          "wall_time_s": 27.555060981998395
+        }
+      },
+      {
+        "ablation": "No AI (Fixed-Time Baseline)",
+        "seed": 43,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 331.5,
+          "mean_waiting_time_s": 210.3863261943987,
+          "vehicles_completed": 1214,
+          "vehicles_total": 4108,
+          "throughput": 1824.0400667779631,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 0,
+          "signal_switches": 0,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2396.0,
+          "wall_time_s": 25.37882496000384
+        }
+      },
+      {
+        "ablation": "No AI (Fixed-Time Baseline)",
+        "seed": 44,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 342.1125,
+          "mean_waiting_time_s": 225.76583333333335,
+          "vehicles_completed": 1200,
+          "vehicles_total": 4100,
+          "throughput": 1805.265357292102,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 0,
+          "signal_switches": 0,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2393.0,
+          "wall_time_s": 26.60153520199674
+        }
+      },
+      {
+        "ablation": "No AI (Fixed-Time Baseline)",
+        "seed": 45,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 347.4696569920844,
+          "mean_waiting_time_s": 230.76781002638523,
+          "vehicles_completed": 1137,
+          "vehicles_total": 4009,
+          "throughput": 1708.347245409015,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 0,
+          "signal_switches": 0,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2396.0,
+          "wall_time_s": 27.55925157800084
+        }
+      },
+      {
+        "ablation": "No AI (Fixed-Time Baseline)",
+        "seed": 46,
+        "scenario": "city",
+        "kpis": {
+          "mean_travel_time_s": 335.16292601828764,
+          "mean_waiting_time_s": 218.72319201995012,
+          "vehicles_completed": 1203,
+          "vehicles_total": 4113,
+          "throughput": 1806.0050041701415,
+          "mean_halting": 0.0
+        },
+        "phase_metrics": {
+          "forecast_accuracy": null,
+          "reroutes_applied": 0,
+          "signal_switches": 0,
+          "pre_emptive_triggers": 0
+        },
+        "meta": {
+          "sim_time_s": 2398.0,
+          "wall_time_s": 26.032442538002215
+        }
+      }
+    ]
+  }
+}

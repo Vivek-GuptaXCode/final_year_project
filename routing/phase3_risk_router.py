@@ -92,23 +92,28 @@ def build_phase3_decision(
         fallback_triggered = False
         strategy = "emergency_override"
     else:
-        if risk_level == "high":
-            reroute_fraction = min(config.max_reroute_fraction, 0.35 + 0.10 * uncertainty)
-        elif risk_level == "medium":
-            reroute_fraction = min(config.max_reroute_fraction, 0.20 + 0.05 * uncertainty)
+        # BALANCED: Target high-delay vehicles with moderate rerouting
+        # Key insight: Reroute stuck vehicles, not random traffic
+        if risk_level == "high" and p_congestion >= 0.5:
+            # High risk + congestion: moderate rerouting (12%)
+            reroute_fraction = min(config.max_reroute_fraction, 0.12)
+        elif risk_level == "medium" and p_congestion >= 0.4:
+            # Medium risk: light rerouting (6%)
+            reroute_fraction = min(config.max_reroute_fraction, 0.06)
         else:
+            # Low risk: no rerouting
             reroute_fraction = 0.0
 
         if low_confidence:
             # Conservative fallback policy under uncertain forecast.
             reroute_mode = "travel_time"
-            reroute_fraction = min(reroute_fraction, 0.15)
+            reroute_fraction = min(reroute_fraction, 0.08)
             min_confidence = 0.0
             fallback_triggered = True
             strategy = "confidence_fallback"
         else:
-            reroute_mode = "gnn_effort"
-            min_confidence = 0.50
+            reroute_mode = "travel_time"
+            min_confidence = 0.55
             fallback_triggered = False
             strategy = "risk_aware_primary"
 

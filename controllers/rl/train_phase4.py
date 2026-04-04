@@ -52,7 +52,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any
 
 import numpy as np
 
@@ -78,7 +78,7 @@ from controllers.rl.traffic_signal_env import (
 RLAgent = DQNAgent | ImprovedDQNAgent
 
 
-def _is_rl_agent(policy: Any) -> TypeGuard[RLAgent]:
+def _is_rl_agent(policy: Any) -> bool:
     return isinstance(policy, (DQNAgent, ImprovedDQNAgent))
 
 
@@ -449,9 +449,9 @@ def _run_shared_multi_agent_train_episode(
 # ── Profile presets ───────────────────────────────────────────────────────────
 
 PROFILES = {
-    "smoke":  {"episodes": 12,  "steps_per_episode": 300},
-    "medium": {"episodes": 60,  "steps_per_episode": 1200},
-    "full":   {"episodes": 150, "steps_per_episode": 1800},
+    "smoke":  {"episodes": 5,   "steps_per_episode": 300},
+    "medium": {"episodes": 30,  "steps_per_episode": 1200},
+    "full":   {"episodes": 100, "steps_per_episode": 1800},
 }
 
 
@@ -475,15 +475,6 @@ def parse_args() -> argparse.Namespace:
                    help="Run one (or more) gradient updates every N simulation steps")
     p.add_argument("--train-updates-per-step", type=int, default=1,
                    help="How many gradient updates to run at each train step")
-    p.add_argument(
-        "--single-junction-finetune-episodes",
-        type=int,
-        default=None,
-        help=(
-            "Optional post-training fine-tune episodes on the reference junction "
-            "(applies when --train-all-tls is enabled)."
-        ),
-    )
     p.add_argument("--eval-episodes", type=int, default=3,
                    help="Evaluation episodes per policy")
     p.add_argument("--seed", type=int, default=42, help="Base random seed")
@@ -658,19 +649,6 @@ def _resolve_train_updates_per_step(args: argparse.Namespace, training_mode: str
     return updates
 
 
-def _resolve_finetune_episodes(args: argparse.Namespace, training_mode: str) -> int:
-    if args.single_junction_finetune_episodes is not None:
-        return max(0, int(args.single_junction_finetune_episodes))
-    if training_mode != "all_tls_shared":
-        return 0
-
-    if args.profile == "full":
-        return 8
-    if args.profile == "medium":
-        return 5
-    return 3
-
-
 def main() -> None:
     args = parse_args()
 
@@ -681,7 +659,6 @@ def main() -> None:
     training_mode = "all_tls_shared" if args.train_all_tls else "single_tls"
     epsilon_decay = _resolve_epsilon_decay(args, training_mode)
     train_updates_per_step = _resolve_train_updates_per_step(args, training_mode)
-    finetune_episodes = _resolve_finetune_episodes(args, training_mode)
     reward_halting_w, reward_throughput_w, reward_waiting_w = _resolve_reward_weights(args)
 
     print(
@@ -719,13 +696,8 @@ def main() -> None:
         discovered_tls = [tls_id]
 
     train_tls_ids = list(discovered_tls)
-    effective_tls_limit = args.train_tls_limit
-    if args.train_all_tls and effective_tls_limit is None:
-        # A bounded default improves convergence for shared-policy training.
-        effective_tls_limit = 8
-
-    if effective_tls_limit is not None and effective_tls_limit > 0:
-        train_tls_ids = train_tls_ids[:effective_tls_limit]
+    if args.train_tls_limit is not None and args.train_tls_limit > 0:
+        train_tls_ids = train_tls_ids[:args.train_tls_limit]
     if not train_tls_ids:
         train_tls_ids = [tls_id]
 
@@ -734,8 +706,6 @@ def main() -> None:
         preview = ", ".join(train_tls_ids[:6])
         suffix = " ..." if len(train_tls_ids) > 6 else ""
         print(f"[P4] Training junction set ({len(train_tls_ids)}): {preview}{suffix}")
-        if effective_tls_limit is not None:
-            print(f"[P4] Training junction limit: {effective_tls_limit}")
 
     env_cfg = EnvConfig(
         guardrail=GuardrailConfig(min_green_seconds=args.min_green),
@@ -828,38 +798,8 @@ def main() -> None:
                 )
 
     train_elapsed = time.time() - t0
-
-    # Short local adaptation for P4.2: tune shared policy on the gate reference junction.
-    finetune_elapsed = 0.0
-    if args.train_all_tls and finetune_episodes > 0:
-        print("\n[P4] ── Single-Junction Fine-Tune ───────────────────────")
-        ft_t0 = time.time()
-        for ft_ep in range(finetune_episodes):
-            ft_seed = args.seed + 4000 + ft_ep
-            ft_result = _run_episode(
-                traci,
-                sumo_binary,
-                sumocfg,
-                tls_id,
-                policy=agent,
-                max_steps=steps_ep,
-                seed=ft_seed,
-                train_agent=agent,
-                train_every=args.train_every,
-                env_cfg=env_cfg,
-            )
-            if ft_ep % max(1, finetune_episodes // 3) == 0 or ft_ep == finetune_episodes - 1:
-                print(
-                    f"  ft_ep={ft_ep:3d}/{finetune_episodes} reward={ft_result['total_reward']:+.2f} "
-                    f"halting={ft_result['mean_halting']:.3f}"
-                )
-        finetune_elapsed = time.time() - ft_t0
-
     training_final_epsilon = round(agent.epsilon, 4)
-    print(
-        f"[P4] Training complete in {train_elapsed:.1f}s"
-        + (f" (+ fine-tune {finetune_elapsed:.1f}s)" if finetune_elapsed > 0 else "")
-    )
+    print(f"[P4] Training complete in {train_elapsed:.1f}s")
 
     # Save weights
     output_dir = _REPO_ROOT / args.output_dir
@@ -881,7 +821,7 @@ def main() -> None:
             policy.epsilon = 0.0  # greedy
         for i in range(args.eval_episodes):
             ep_seed = args.seed + 1000 + i
-            if isinstance(policy, (FixedTimePolicy, SimpleActuatedPolicy)):
+            if hasattr(policy, "reset"):
                 try:
                     policy.reset(tls_id, 0.0)
                 except Exception:
@@ -983,8 +923,6 @@ def main() -> None:
             "train_updates_per_step": train_updates_per_step,
             "n_training_junctions": len(train_tls_ids),
             "training_tls_ids": train_tls_ids,
-            "single_junction_finetune_episodes": finetune_episodes,
-            "single_junction_finetune_elapsed_seconds": round(finetune_elapsed, 1),
             "agent_class": type(agent).__name__,
             "agent_obs_dim": int(agent.obs_dim),
             "elapsed_seconds": round(train_elapsed, 1),

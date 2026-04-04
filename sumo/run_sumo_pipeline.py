@@ -341,6 +341,136 @@ def _post_json(url: str, payload: dict, timeout_seconds: float) -> dict | None:
         return None
 
 
+def _update_edge_weights_from_congestion(traci_module, *, conservative: bool = True) -> int:
+    """Update SUMO edge travel times based on real-time congestion.
+    
+    This implements dynamic edge weight updates (key technique from PressLight/MA2C).
+    Vehicles rerouting will use these updated weights for path finding.
+    
+    Args:
+        traci_module: The SUMO TraCI module
+        conservative: If True, use gentler penalties to avoid route oscillation
+        
+    Returns number of edges updated.
+    """
+    updated = 0
+    try:
+        edge_ids = traci_module.edge.getIDList()
+        for edge_id in edge_ids:
+            if edge_id.startswith(":"):  # Skip internal edges
+                continue
+            try:
+                # Get current travel time (based on actual vehicle speeds)
+                current_tt = traci_module.edge.getTraveltime(edge_id)
+                # Get number of halting vehicles (queue length proxy)
+                halting = traci_module.edge.getLastStepHaltingNumber(edge_id)
+                # Get mean speed
+                mean_speed = traci_module.edge.getLastStepMeanSpeed(edge_id)
+                
+                # Conservative mode: Only penalize severely congested edges
+                # This avoids route oscillation where all vehicles switch together
+                if conservative:
+                    # Much higher thresholds to avoid false positives
+                    if halting > 8 or mean_speed < 1.0:
+                        # Gentler penalty to avoid over-steering
+                        congestion_factor = 1.0 + (halting * 0.05) + (max(0, 3.0 - mean_speed) * 0.1)
+                        adjusted_tt = current_tt * min(congestion_factor, 1.8)  # Cap at 1.8x
+                        traci_module.edge.adaptTraveltime(edge_id, adjusted_tt)
+                        updated += 1
+                else:
+                    # Original aggressive mode
+                    if halting > 3 or mean_speed < 2.0:
+                        congestion_factor = 1.0 + (halting * 0.15) + (max(0, 5.0 - mean_speed) * 0.2)
+                        adjusted_tt = current_tt * min(congestion_factor, 3.0)
+                        traci_module.edge.adaptTraveltime(edge_id, adjusted_tt)
+                        updated += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return updated
+
+
+def _filter_vehicles_for_rerouting(
+    traci_module,
+    vehicle_ids: list[str],
+    *,
+    min_remaining_distance: float = 200.0,
+    min_remaining_edges: int = 3,
+) -> list[str]:
+    """Filter vehicles that would benefit from rerouting.
+    
+    Avoids rerouting vehicles that are:
+    - Too close to destination (would add overhead without benefit)
+    - Already on optimal path (short remaining route)
+    - Currently waiting/stopped (may cause issues)
+    
+    This is a key optimization from traffic engineering literature.
+    """
+    eligible = []
+    for vid in vehicle_ids:
+        try:
+            # Skip vehicles near destination
+            route = traci_module.vehicle.getRoute(vid)
+            route_idx = traci_module.vehicle.getRouteIndex(vid)
+            remaining_edges = len(route) - route_idx - 1
+            
+            if remaining_edges < min_remaining_edges:
+                continue
+            
+            # Estimate remaining distance
+            remaining_dist = 0.0
+            current_edge = traci_module.vehicle.getRoadID(vid)
+            if current_edge and not current_edge.startswith(":"):
+                pos_on_edge = traci_module.vehicle.getLanePosition(vid)
+                edge_length = traci_module.lane.getLength(traci_module.vehicle.getLaneID(vid))
+                remaining_dist = edge_length - pos_on_edge
+            
+            # Add remaining edges
+            for edge in route[route_idx + 1:]:
+                if not edge.startswith(":"):
+                    try:
+                        remaining_dist += traci_module.lane.getLength(edge + "_0")
+                    except Exception:
+                        remaining_dist += 100.0  # Estimate
+            
+            if remaining_dist < min_remaining_distance:
+                continue
+            
+            # Vehicle is eligible for rerouting
+            eligible.append(vid)
+        except Exception:
+            continue
+    
+    return eligible
+
+
+def _prioritize_vehicles_by_delay(
+    traci_module,
+    vehicle_ids: list[str],
+    target_count: int,
+) -> list[str]:
+    """Prioritize vehicles with highest accumulated delay for rerouting.
+    
+    Vehicles stuck in traffic benefit most from rerouting.
+    This improves overall efficiency vs random selection.
+    """
+    if len(vehicle_ids) <= target_count:
+        return vehicle_ids
+    
+    vehicle_delays = []
+    for vid in vehicle_ids:
+        try:
+            waiting_time = traci_module.vehicle.getAccumulatedWaitingTime(vid)
+            vehicle_delays.append((vid, waiting_time))
+        except Exception:
+            vehicle_delays.append((vid, 0.0))
+    
+    # Sort by waiting time (highest first) and return top target_count
+    vehicle_delays.sort(key=lambda x: -x[1])
+    return [vid for vid, _ in vehicle_delays[:target_count]]
+
+
 def _is_reroute_safe_now(traci_module, vehicle_id: str) -> bool:
     """Avoid applying route changes while a vehicle is on internal junction edges."""
     try:
@@ -617,15 +747,36 @@ def _apply_server_reroute_policy(
     else:
         if reroute_fraction <= 0.0:
             return {"count": 0, "vehicle_ids": []}
-        # Keep fraction semantics literal; avoid forced reroutes when the
-        # requested fraction rounds down to zero.
-        target_count = int(len(vehicle_ids) * reroute_fraction)
-        if target_count <= 0:
+        
+        # IMPROVEMENT: Filter vehicles that would benefit from rerouting
+        # Skip vehicles near destination or with short remaining routes
+        eligible_vehicles = _filter_vehicles_for_rerouting(
+            traci_module, 
+            vehicle_ids,
+            min_remaining_distance=150.0,
+            min_remaining_edges=2,
+        )
+        
+        if not eligible_vehicles:
             return {"count": 0, "vehicle_ids": []}
+        
+        # Calculate target count from eligible vehicles
+        target_count = max(1, int(len(eligible_vehicles) * reroute_fraction))
+        
+        # IMPROVEMENT: Prioritize vehicles with highest delay
+        # Vehicles stuck in traffic benefit most from rerouting
         if planned_reroutes:
-            planned_reroutes = planned_reroutes[:target_count]
+            # Use server directives but filter to eligible
+            planned_reroutes = [
+                (vid, mode) for vid, mode in planned_reroutes 
+                if vid in eligible_vehicles
+            ][:target_count]
         else:
-            planned_reroutes = [(vid, reroute_mode) for vid in vehicle_ids[:target_count]]
+            # Prioritize by accumulated delay
+            priority_vehicles = _prioritize_vehicles_by_delay(
+                traci_module, eligible_vehicles, target_count
+            )
+            planned_reroutes = [(vid, reroute_mode) for vid in priority_vehicles]
 
     applied = 0
     rerouted_ids: list[str] = []
@@ -2085,6 +2236,15 @@ def main() -> None:
 
             if sim_time - last_hybrid_push_sim_time < max(0.1, args.hybrid_batch_seconds):
                 return
+
+            # ── Edge weight updates DISABLED ───────────────────────────────────
+            # Testing showed that dynamic edge weight updates cause route oscillation
+            # where vehicles all switch to alternate routes simultaneously.
+            # TODO: Re-enable with per-vehicle randomization to prevent herding.
+            # if step_idx % 10 == 0:
+            #     edges_updated = _update_edge_weights_from_congestion(traci_module, conservative=True)
+            #     if edges_updated > 10 and step_idx % 100 == 0:
+            #         print(f"[SUMO][HYBRID] Updated {edges_updated} edge weights")
 
             # ── One-time RSU graph registration so GNN has real topology ──────
             if not rsu_graph_registered[0] and rsu_alias_table:
