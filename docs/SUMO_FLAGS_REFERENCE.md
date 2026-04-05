@@ -87,6 +87,13 @@ Road Side Units (RSUs) are placed at strategic junctions for V2X communication.
 - **Description**: Minimum center-to-center spacing between RSUs
 - **Example**: `--rsu-min-spacing-m 400`
 
+### `--rsu-whitelist RSU_WHITELIST`
+- **Default**: None (all RSUs active)
+- **Description**: Comma-separated list of RSU aliases to keep active. Only these RSUs will be displayed and used for V2X communication. Useful for focusing on specific intersections.
+- **Format**: Accepts `A`, `RSU_A`, or `RSU-A` format
+- **Example**: `--rsu-whitelist "A,K,M,R,P,T,V,Y"` (keep only 8 specific RSUs)
+- **Example**: `--rsu-whitelist "RSU_A,RSU_K,RSU_M"` (same with prefix)
+
 ---
 
 ## Traffic Control

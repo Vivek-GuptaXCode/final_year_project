@@ -89,6 +89,12 @@ def parse_args() -> argparse.Namespace:
         help="Minimum center-to-center spacing between RSUs (default: 1.8 * rsu-range-m).",
     )
     parser.add_argument(
+        "--rsu-whitelist",
+        type=str,
+        default=None,
+        help="Comma-separated list of RSU aliases to keep (e.g., 'A,B,K,M,R'). Only these RSUs will be active.",
+    )
+    parser.add_argument(
         "--traffic-scale",
         type=float,
         default=1.0,
@@ -1684,6 +1690,7 @@ def _generate_rsu_poi_add_file(
     min_incoming_lanes: int,
     max_count: int,
     min_spacing_m: float,
+    rsu_whitelist: set[str] | None = None,
 ) -> tuple[Path | None, int, int]:
     try:
         root = ET.parse(net_file).getroot()
@@ -1707,17 +1714,29 @@ def _generate_rsu_poi_add_file(
         "<additional>",
     ]
     placed_labels: list[tuple[float, float]] = []
+    
+    # Build full node list with aliases first (to maintain consistent alias assignment)
+    nodes_with_alias: list[tuple[str, str, float, float]] = []
     for idx, (jid, x, y) in enumerate(rsu_nodes, start=1):
         alias = _to_bijective_base26_label(idx)
+        nodes_with_alias.append((alias, jid, x, y))
+    
+    # Filter by whitelist if provided
+    if rsu_whitelist:
+        nodes_with_alias = [(alias, jid, x, y) for alias, jid, x, y in nodes_with_alias if alias in rsu_whitelist]
+    
+    for alias, jid, x, y in nodes_with_alias:
         label_text = f"RSU_{alias}"
 
         range_shape = _build_circle_shape_points(x=x, y=y, radius_m=rsu_range_m)
+        # Find original index for label positioning
+        original_idx = next((i+1 for i, (j, _, _) in enumerate(rsu_nodes) if j == jid), 1)
         label_x, label_y, label_dir = _select_rsu_label_position(
             root,
             junction_id=jid,
             x=x,
             y=y,
-            alias_index=idx,
+            alias_index=original_idx,
         )
 
         # Keep text labels spread out and away from dense center areas.
@@ -1743,7 +1762,7 @@ def _generate_rsu_poi_add_file(
 
     lines.append("</additional>")
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return output_path, len(rsu_nodes), candidate_count
+    return output_path, len(nodes_with_alias), candidate_count
 
 
 def main() -> None:
@@ -1770,6 +1789,30 @@ def main() -> None:
             max_count=max(1, args.rsu_max_count),
             min_spacing_m=max(1.0, rsu_spacing_for_alias),
         )
+        
+        # Apply RSU whitelist filter if specified
+        if args.rsu_whitelist:
+            whitelist_set = set()
+            for token in args.rsu_whitelist.split(","):
+                alias = token.strip().upper()
+                # Handle RSU_X or just X format
+                if alias.startswith("RSU_"):
+                    alias = alias[4:]
+                elif alias.startswith("RSU"):
+                    alias = alias[3:]
+                whitelist_set.add(alias)
+            
+            original_count = len(rsu_alias_table)
+            rsu_alias_table = [
+                (alias, jid, x, y) for alias, jid, x, y in rsu_alias_table
+                if alias in whitelist_set
+            ]
+            if rsu_alias_table:
+                print(f"[SUMO][RSU] Whitelist applied: {len(rsu_alias_table)}/{original_count} RSUs retained")
+                print(f"[SUMO][RSU] Active RSUs: {', '.join('RSU_' + alias for alias, _, _, _ in rsu_alias_table)}")
+            else:
+                print(f"[SUMO][RSU] Warning: Whitelist filtered out all RSUs! Check aliases.")
+        
         rsu_alias_map = {alias: jid for alias, jid, _x, _y in rsu_alias_table}
 
     if args.list_rsus:
@@ -1960,6 +2003,18 @@ def main() -> None:
         if rsu_spacing is None:
             rsu_spacing = max(80.0, args.rsu_range_m * 1.8)
 
+        # Parse whitelist for POI generation
+        poi_whitelist: set[str] | None = None
+        if args.rsu_whitelist:
+            poi_whitelist = set()
+            for token in args.rsu_whitelist.split(","):
+                alias = token.strip().upper()
+                if alias.startswith("RSU_"):
+                    alias = alias[4:]
+                elif alias.startswith("RSU"):
+                    alias = alias[3:]
+                poi_whitelist.add(alias)
+
         poi_file, selected_count, candidate_count = _generate_rsu_poi_add_file(
             net_file,
             config.scenario,
@@ -1967,12 +2022,14 @@ def main() -> None:
             min_incoming_lanes=max(1, args.rsu_min_inc_lanes),
             max_count=max(1, args.rsu_max_count),
             min_spacing_m=max(1.0, rsu_spacing),
+            rsu_whitelist=poi_whitelist,
         )
         if poi_file is not None:
             additional_files.append(poi_file)
+            whitelist_note = f" (whitelist: {len(poi_whitelist)} RSUs)" if poi_whitelist else ""
             print(
                 f"[SUMO] RSU overlays: selected {selected_count} intersections "
-                f"out of {candidate_count} candidates (min-inc-lanes={args.rsu_min_inc_lanes}, "
+                f"out of {candidate_count} candidates{whitelist_note} (min-inc-lanes={args.rsu_min_inc_lanes}, "
                 f"min-spacing={rsu_spacing:.1f}m, max-count={args.rsu_max_count})."
             )
             if config.gui_use_osg_view or args.three_d:
