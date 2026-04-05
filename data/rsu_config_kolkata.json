@@ -1,0 +1,197 @@
+{
+    "description": "RSU deployment configuration for Kolkata network with real place names",
+    "network": "kolkata",
+    "rsu_count": 19,
+    "rsus": [
+        {
+            "id": "SEALDAH",
+            "display_name": "Sealdah Station",
+            "junction_id": "9491482575",
+            "x": 2840.79,
+            "y": 11686.77,
+            "lat": 22.601763,
+            "lon": 88.373636,
+            "description": "Major railway terminus, high pedestrian and vehicle traffic"
+        },
+        {
+            "id": "COLLEGE_STREET",
+            "display_name": "College Street",
+            "junction_id": "cluster_10282080280_10846969131_11365834325_2281800978_#2more",
+            "x": 1963.45,
+            "y": 11018.52,
+            "lat": 22.595801,
+            "lon": 88.365042,
+            "description": "Famous book market area, Presidency University"
+        },
+        {
+            "id": "MOULALI",
+            "display_name": "Moulali",
+            "junction_id": "cluster_10092213336_11078131361_11078131374_11941830907_#1more",
+            "x": 1734.95,
+            "y": 9949.34,
+            "lat": 22.586163,
+            "lon": 88.362725,
+            "description": "Major bus terminus and crossing"
+        },
+        {
+            "id": "LENIN_SARANI",
+            "display_name": "Lenin Sarani Junction",
+            "junction_id": "cluster_11078131349_11078131352_11365834334_11365834335",
+            "x": 2228.59,
+            "y": 9899.76,
+            "lat": 22.585675,
+            "lon": 88.367521,
+            "description": "Central Avenue junction, commercial hub"
+        },
+        {
+            "id": "SN_BANERJEE_ROAD",
+            "display_name": "S.N. Banerjee Road",
+            "junction_id": "cluster_12885886219_12885886220_12885886221_2281800874_#6more",
+            "x": 2972.28,
+            "y": 9863.11,
+            "lat": 22.585282,
+            "lon": 88.374751,
+            "description": "Near BBD Bagh, government offices"
+        },
+        {
+            "id": "ELLIOT_ROAD",
+            "display_name": "Elliot Road",
+            "junction_id": "cluster_10092213329_663940631",
+            "x": 1570.22,
+            "y": 9267.10,
+            "lat": 22.580015,
+            "lon": 88.361062,
+            "description": "Near Esplanade West, shopping area"
+        },
+        {
+            "id": "CHANDNI_CHOWK",
+            "display_name": "Chandni Chowk",
+            "junction_id": "cluster_10057961325_10057961326_11365834327_663940656",
+            "x": 1969.46,
+            "y": 9152.54,
+            "lat": 22.578948,
+            "lon": 88.364935,
+            "description": "Near Metro station, major intersection"
+        },
+        {
+            "id": "ESPLANADE",
+            "display_name": "Esplanade",
+            "junction_id": "663940665",
+            "x": 2413.83,
+            "y": 9027.56,
+            "lat": 22.577782,
+            "lon": 88.369245,
+            "description": "Central bus terminus, Metro hub"
+        },
+        {
+            "id": "DALHOUSIE",
+            "display_name": "Dalhousie Square",
+            "junction_id": "cluster_10281869257_12438122826_12438122827_663940666",
+            "x": 2847.79,
+            "y": 8902.58,
+            "lat": 22.576618,
+            "lon": 88.373454,
+            "description": "Near Writers Building, historic area"
+        },
+        {
+            "id": "CHOWRINGHEE",
+            "display_name": "Chowringhee North",
+            "junction_id": "cluster_10092213337_10281986032_10281986055_10302557855_#3more",
+            "x": 1535.51,
+            "y": 9114.35,
+            "lat": 22.578639,
+            "lon": 88.360711,
+            "description": "Near Indian Museum, Jawaharlal Nehru Road"
+        },
+        {
+            "id": "MAIDAN_CROSSING",
+            "display_name": "Maidan Crossing",
+            "junction_id": "cluster_10281986050_12306881010_2281953588",
+            "x": 1882.67,
+            "y": 8937.30,
+            "lat": 22.577011,
+            "lon": 88.364072,
+            "description": "Near Shahid Minar, open ground area"
+        },
+        {
+            "id": "PARK_STREET",
+            "display_name": "Park Street",
+            "junction_id": "664472799",
+            "x": 2212.48,
+            "y": 8538.06,
+            "lat": 22.573378,
+            "lon": 88.367243,
+            "description": "Entertainment and restaurant district"
+        },
+        {
+            "id": "PARK_CIRCUS",
+            "display_name": "Park Circus",
+            "junction_id": "cluster_10281986033_10302557856_10302557859_638354058",
+            "x": 2514.51,
+            "y": 8013.84,
+            "lat": 22.568619,
+            "lon": 88.370134,
+            "description": "Major 7-point crossing, cultural hub"
+        },
+        {
+            "id": "AJC_BOSE_ROAD",
+            "display_name": "AJC Bose Road",
+            "junction_id": "10285563019",
+            "x": 2424.25,
+            "y": 7809.01,
+            "lat": 22.566776,
+            "lon": 88.369238,
+            "description": "Bypass junction, heavy traffic corridor"
+        },
+        {
+            "id": "BOWBAZAR",
+            "display_name": "Bowbazar",
+            "junction_id": "cluster_11365834326_664447519_8507404876_8507404877_#1more",
+            "x": 2560.55,
+            "y": 10889.19,
+            "lat": 22.594583,
+            "lon": 88.370838,
+            "description": "Metro corridor, jewelry market"
+        },
+        {
+            "id": "MIDDLETON_ROW",
+            "display_name": "Middleton Row",
+            "junction_id": "cluster_13300645520_13300645530_663844204",
+            "x": 1545.92,
+            "y": 8114.51,
+            "lat": 22.569608,
+            "lon": 88.360724,
+            "description": "Consulate area, quiet neighborhood"
+        },
+        {
+            "id": "QUEENS_WAY",
+            "display_name": "Queen's Way",
+            "junction_id": "1189036929",
+            "x": 1275.13,
+            "y": 8197.83,
+            "lat": 22.570383,
+            "lon": 88.358098,
+            "description": "Near Park Street Metro, residential area"
+        },
+        {
+            "id": "WELLINGTON",
+            "display_name": "Wellington Square",
+            "junction_id": "cluster_11394328270_11394328284_11394328285_12885843477_#5more",
+            "x": 3024.01,
+            "y": 10854.70,
+            "lat": 22.594233,
+            "lon": 88.375343,
+            "description": "Girish Park area, historical square"
+        },
+        {
+            "id": "FREE_SCHOOL_ST",
+            "display_name": "Free School Street",
+            "junction_id": "663843486",
+            "x": 1979.88,
+            "y": 7958.29,
+            "lat": 22.568161,
+            "lon": 88.364930,
+            "description": "Mirza Ghalib Street, heritage area"
+        }
+    ]
+}

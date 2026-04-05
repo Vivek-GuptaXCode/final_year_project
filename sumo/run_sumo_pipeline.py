@@ -95,6 +95,12 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated list of RSU aliases to keep (e.g., 'A,B,K,M,R'). Only these RSUs will be active.",
     )
     parser.add_argument(
+        "--rsu-config",
+        type=str,
+        default=None,
+        help="Path to RSU configuration JSON file with custom RSU placements and names (e.g., data/rsu_config_kolkata.json).",
+    )
+    parser.add_argument(
         "--traffic-scale",
         type=float,
         default=1.0,
@@ -1160,6 +1166,81 @@ def _to_bijective_base26_label(index_1_based: int) -> str:
     return "".join(out)
 
 
+def _load_rsu_config_from_json(
+    config_path: Path,
+    net_file: Path,
+) -> list[tuple[str, str, float, float, str]]:
+    """Load RSU configuration from JSON file with custom placements and names.
+    
+    Returns list of (alias/id, junction_id, x, y, display_name) tuples.
+    Junction IDs are validated against the network; if exact match not found,
+    finds nearest junction to specified coordinates.
+    """
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"[SUMO][RSU] Error loading RSU config: {e}")
+        return []
+    
+    rsus = config.get("rsus", [])
+    if not rsus:
+        print("[SUMO][RSU] No RSUs defined in config file")
+        return []
+    
+    # Parse network junctions for validation/matching
+    try:
+        root = ET.parse(net_file).getroot()
+    except Exception as e:
+        print(f"[SUMO][RSU] Error parsing network file: {e}")
+        return []
+    
+    junction_map: dict[str, tuple[float, float]] = {}
+    for junction in root.findall("junction"):
+        jid = junction.attrib.get("id")
+        jtype = junction.attrib.get("type", "")
+        x_str = junction.attrib.get("x")
+        y_str = junction.attrib.get("y")
+        if not jid or not x_str or not y_str:
+            continue
+        if jtype in {"internal", "dead_end"}:
+            continue
+        junction_map[jid] = (float(x_str), float(y_str))
+    
+    table: list[tuple[str, str, float, float, str]] = []
+    for rsu in rsus:
+        rsu_id = rsu.get("id", "")
+        display_name = rsu.get("display_name", rsu_id)
+        junction_id = rsu.get("junction_id", "")
+        x = rsu.get("x", 0.0)
+        y = rsu.get("y", 0.0)
+        
+        # Try exact junction match first
+        if junction_id in junction_map:
+            jx, jy = junction_map[junction_id]
+            table.append((rsu_id, junction_id, jx, jy, display_name))
+        else:
+            # Find nearest junction to specified coordinates
+            best_dist = float("inf")
+            best_junction = None
+            for jid, (jx, jy) in junction_map.items():
+                dist = math.sqrt((jx - x) ** 2 + (jy - y) ** 2)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_junction = (jid, jx, jy)
+            
+            if best_junction and best_dist < 200.0:  # within 200m tolerance
+                jid, jx, jy = best_junction
+                table.append((rsu_id, jid, jx, jy, display_name))
+                if best_dist > 10.0:
+                    print(f"[SUMO][RSU] {rsu_id}: matched to {jid} ({best_dist:.1f}m away)")
+            else:
+                print(f"[SUMO][RSU] Warning: {rsu_id} - no junction found within 200m")
+    
+    print(f"[SUMO][RSU] Loaded {len(table)} RSUs from {config_path.name}")
+    return table
+
+
 def _build_rsu_alias_table(
     *,
     net_file: Path,
@@ -1765,6 +1846,78 @@ def _generate_rsu_poi_add_file(
     return output_path, len(nodes_with_alias), candidate_count
 
 
+def _generate_rsu_poi_from_config(
+    net_file: Path,
+    scenario_name: str,
+    rsu_range_m: float,
+    rsu_config_table: list[tuple[str, str, float, float, str]],
+) -> tuple[Path | None, int]:
+    """Generate RSU POI file from custom configuration with display names.
+    
+    Args:
+        net_file: Path to the SUMO network file
+        scenario_name: Name of the scenario for output file naming
+        rsu_range_m: RSU range radius in meters
+        rsu_config_table: List of (rsu_id, junction_id, x, y, display_name) tuples
+        
+    Returns:
+        (output_path, rsu_count) tuple
+    """
+    if not rsu_config_table:
+        return None, 0
+    
+    try:
+        root = ET.parse(net_file).getroot()
+    except Exception:
+        return None, 0
+    
+    output_path = net_file.parent.parent / "scenarios" / f"{scenario_name}_rsu_pois.add.xml"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    lines = ["<additional>"]
+    placed_labels: list[tuple[float, float]] = []
+    
+    for idx, (rsu_id, jid, x, y, display_name) in enumerate(rsu_config_table, start=1):
+        # Use display_name for label, fallback to rsu_id
+        label_text = display_name if display_name else f"RSU_{rsu_id}"
+        
+        range_shape = _build_circle_shape_points(x=x, y=y, radius_m=rsu_range_m)
+        label_x, label_y, label_dir = _select_rsu_label_position(
+            root,
+            junction_id=jid,
+            x=x,
+            y=y,
+            alias_index=idx,
+        )
+        
+        # Keep text labels spread out
+        for _ in range(4):
+            if not any(_distance_xy((label_x, label_y), pos) < 16.0 for pos in placed_labels):
+                break
+            label_x += label_dir[0] * 7.0
+            label_y += label_dir[1] * 7.0
+        placed_labels.append((label_x, label_y))
+        
+        # RSU range circle (red outline)
+        lines.append(
+            f'    <poly id="rsu_range_{escape(jid)}" type="rsu_range" color="255,0,0,255" layer="12" lineWidth="2" fill="false" shape="{range_shape}"/>'
+        )
+        # Label anchor (green dot)
+        lines.append(
+            f'    <poi id="rsu_label_anchor_{escape(rsu_id)}" type="rsu_anchor" color="26,140,26,220" layer="13" x="{label_x:.2f}" y="{label_y:.2f}" width="2.4"/>'
+        )
+        # Label text with display name
+        lines.append(
+            f'    <poi id="rsu_label_text_{escape(rsu_id)}" type="{escape(label_text)}" color="0,0,0,0" layer="14" x="{label_x:.2f}" y="{label_y:.2f}">'
+        )
+        lines.append(f'        <param key="name" value="{escape(label_text)}"/>')
+        lines.append("    </poi>")
+    
+    lines.append("</additional>")
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path, len(rsu_config_table)
+
+
 def main() -> None:
     args = parse_args()
     contract_path = Path(args.contract)
@@ -1776,9 +1929,30 @@ def main() -> None:
     net_file = _resolve_net_file_from_sumocfg(config.sumocfg_path)
     use_junction_taz = False
 
+    # RSU configuration - either from JSON config file or auto-detected
     rsu_alias_table: list[tuple[str, str, float, float]] = []
+    rsu_config_table: list[tuple[str, str, float, float, str]] = []  # With display names
     rsu_alias_map: dict[str, str] = {}
-    if net_file is not None:
+    use_custom_rsu_config = False
+    
+    if args.rsu_config and net_file is not None:
+        # Load custom RSU configuration from JSON
+        rsu_config_path = Path(args.rsu_config)
+        if not rsu_config_path.is_absolute():
+            rsu_config_path = project_root / rsu_config_path
+        
+        if rsu_config_path.exists():
+            rsu_config_table = _load_rsu_config_from_json(rsu_config_path, net_file)
+            if rsu_config_table:
+                use_custom_rsu_config = True
+                # Convert to alias_table format for backward compatibility
+                rsu_alias_table = [(rsu_id, jid, x, y) for rsu_id, jid, x, y, _name in rsu_config_table]
+                rsu_alias_map = {rsu_id: jid for rsu_id, jid, _x, _y, _name in rsu_config_table}
+        else:
+            print(f"[SUMO][RSU] Warning: Config file not found: {rsu_config_path}")
+    
+    if not use_custom_rsu_config and net_file is not None:
+        # Fall back to auto-detection
         rsu_spacing_for_alias = args.rsu_min_spacing_m
         if rsu_spacing_for_alias is None:
             rsu_spacing_for_alias = max(80.0, args.rsu_range_m * 1.8)
@@ -1819,12 +1993,16 @@ def main() -> None:
         if net_file is None:
             raise ValueError("--list-rsus requires a valid net-file in the scenario config")
 
-        print(f"[SUMO] RSU aliases for scenario '{config.scenario}':")
-        if not rsu_alias_table:
-            print("[SUMO] No RSUs selected with current filters.")
-        else:
+        print(f"[SUMO] RSU configuration for scenario '{config.scenario}':")
+        if use_custom_rsu_config:
+            print(f"[SUMO] (Using custom config: {args.rsu_config})")
+            for rsu_id, jid, x, y, display_name in rsu_config_table:
+                print(f"  - {rsu_id}: {display_name} | junction={jid} x={x:.2f} y={y:.2f}")
+        elif rsu_alias_table:
             for alias, jid, x, y in rsu_alias_table:
                 print(f"  - RSU_{alias}: junction={jid} x={x:.2f} y={y:.2f}")
+        else:
+            print("[SUMO] No RSUs selected with current filters.")
         return
 
     if args.suggest_near_junction is not None:
@@ -2003,40 +2181,57 @@ def main() -> None:
         if rsu_spacing is None:
             rsu_spacing = max(80.0, args.rsu_range_m * 1.8)
 
-        # Parse whitelist for POI generation
-        poi_whitelist: set[str] | None = None
-        if args.rsu_whitelist:
-            poi_whitelist = set()
-            for token in args.rsu_whitelist.split(","):
-                alias = token.strip().upper()
-                if alias.startswith("RSU_"):
-                    alias = alias[4:]
-                elif alias.startswith("RSU"):
-                    alias = alias[3:]
-                poi_whitelist.add(alias)
-
-        poi_file, selected_count, candidate_count = _generate_rsu_poi_add_file(
-            net_file,
-            config.scenario,
-            rsu_range_m=max(5.0, args.rsu_range_m),
-            min_incoming_lanes=max(1, args.rsu_min_inc_lanes),
-            max_count=max(1, args.rsu_max_count),
-            min_spacing_m=max(1.0, rsu_spacing),
-            rsu_whitelist=poi_whitelist,
-        )
-        if poi_file is not None:
-            additional_files.append(poi_file)
-            whitelist_note = f" (whitelist: {len(poi_whitelist)} RSUs)" if poi_whitelist else ""
-            print(
-                f"[SUMO] RSU overlays: selected {selected_count} intersections "
-                f"out of {candidate_count} candidates{whitelist_note} (min-inc-lanes={args.rsu_min_inc_lanes}, "
-                f"min-spacing={rsu_spacing:.1f}m, max-count={args.rsu_max_count})."
+        # Use custom RSU config if available, otherwise auto-detect
+        if use_custom_rsu_config and rsu_config_table:
+            poi_file, selected_count = _generate_rsu_poi_from_config(
+                net_file,
+                config.scenario,
+                rsu_range_m=max(5.0, args.rsu_range_m),
+                rsu_config_table=rsu_config_table,
             )
-            if config.gui_use_osg_view or args.three_d:
+            candidate_count = selected_count  # All configured RSUs are placed
+            if poi_file is not None:
+                additional_files.append(poi_file)
                 print(
-                    "[SUMO] Note: OSG 3D mode may hide POI/poly overlays on some builds. "
-                    "Use 2D GUI (omit --three-d) for guaranteed RSU-range visibility."
+                    f"[SUMO] RSU overlays: {selected_count} RSUs from custom config "
+                    f"({args.rsu_config})"
                 )
+        else:
+            # Parse whitelist for POI generation
+            poi_whitelist: set[str] | None = None
+            if args.rsu_whitelist:
+                poi_whitelist = set()
+                for token in args.rsu_whitelist.split(","):
+                    alias = token.strip().upper()
+                    if alias.startswith("RSU_"):
+                        alias = alias[4:]
+                    elif alias.startswith("RSU"):
+                        alias = alias[3:]
+                    poi_whitelist.add(alias)
+
+            poi_file, selected_count, candidate_count = _generate_rsu_poi_add_file(
+                net_file,
+                config.scenario,
+                rsu_range_m=max(5.0, args.rsu_range_m),
+                min_incoming_lanes=max(1, args.rsu_min_inc_lanes),
+                max_count=max(1, args.rsu_max_count),
+                min_spacing_m=max(1.0, rsu_spacing),
+                rsu_whitelist=poi_whitelist,
+            )
+            if poi_file is not None:
+                additional_files.append(poi_file)
+                whitelist_note = f" (whitelist: {len(poi_whitelist)} RSUs)" if poi_whitelist else ""
+                print(
+                    f"[SUMO] RSU overlays: selected {selected_count} intersections "
+                    f"out of {candidate_count} candidates{whitelist_note} (min-inc-lanes={args.rsu_min_inc_lanes}, "
+                    f"min-spacing={rsu_spacing:.1f}m, max-count={args.rsu_max_count})."
+                )
+        
+        if config.gui_use_osg_view or args.three_d:
+            print(
+                "[SUMO] Note: OSG 3D mode may hide POI/poly overlays on some builds. "
+                "Use 2D GUI (omit --three-d) for guaranteed RSU-range visibility."
+            )
 
     statistics_output_path = (
         _resolve_project_path(args.statistics_output, project_root=project_root)

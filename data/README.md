@@ -148,6 +148,46 @@ data/exports/*.tar.gz
 data/processed/phase2sweep_*/
 ```
 
+## RSU Configuration
+
+Custom RSU placements can be defined in JSON config files:
+
+### `rsu_config_kolkata.json`
+
+Defines 19 RSU locations with real Kolkata place names:
+
+| RSU ID | Display Name | Landmark |
+|--------|--------------|----------|
+| SEALDAH | Sealdah Station | Major railway terminus |
+| COLLEGE_STREET | College Street | Book market, Presidency University |
+| MOULALI | Moulali | Major bus terminus |
+| LENIN_SARANI | Lenin Sarani Junction | Central Avenue junction |
+| SN_BANERJEE_ROAD | S.N. Banerjee Road | Near BBD Bagh |
+| ELLIOT_ROAD | Elliot Road | Near Esplanade West |
+| CHANDNI_CHOWK | Chandni Chowk | Near Metro station |
+| ESPLANADE | Esplanade | Central bus terminus, Metro hub |
+| DALHOUSIE | Dalhousie Square | Near Writers Building |
+| CHOWRINGHEE | Chowringhee North | Near Indian Museum |
+| MAIDAN_CROSSING | Maidan Crossing | Near Shahid Minar |
+| PARK_STREET | Park Street | Entertainment district |
+| PARK_CIRCUS | Park Circus | 7-point crossing, cultural hub |
+| AJC_BOSE_ROAD | AJC Bose Road | Bypass junction |
+| BOWBAZAR | Bowbazar | Metro corridor, jewelry market |
+| MIDDLETON_ROW | Middleton Row | Consulate area |
+| QUEENS_WAY | Queen's Way | Near Park Street Metro |
+| WELLINGTON | Wellington Square | Girish Park area |
+| FREE_SCHOOL_ST | Free School Street | Mirza Ghalib Street |
+
+**Usage**:
+```bash
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --rsu-config data/rsu_config_kolkata.json \
+  --gui
+```
+
+---
+
 ## Export Bundles
 
 Bundled datasets for sharing:
