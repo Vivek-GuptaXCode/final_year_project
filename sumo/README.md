@@ -1,11 +1,48 @@
 # SUMO Integration Scaffold
 
-This folder will hold SUMO assets and adapters for the project.
+This folder holds SUMO assets and adapters for the Hybrid AI Traffic Management System.
+
+## Quick Reference
+
+For full CLI flag documentation, see **[docs/SUMO_FLAGS_REFERENCE.md](../docs/SUMO_FLAGS_REFERENCE.md)**.
 
 ## Structure
-- `sumo/networks/`: road network files (`.net.xml`).
-- `sumo/routes/`: demand/route files (`.rou.xml`).
-- `sumo/scenarios/`: SUMO config files (`.sumocfg`) and scenario presets.
+
+- `sumo/networks/`: road network files (`.net.xml`)
+- `sumo/routes/`: demand/route files (`.rou.xml`)
+- `sumo/scenarios/`: SUMO config files (`.sumocfg`) and scenario presets
+
+## Available Scenarios
+
+| Scenario | Description | Network Size |
+|----------|-------------|--------------|
+| `demo` | Real city hackathon demo (3D enabled) | Medium |
+| `city` | City scenario with traffic lights | Medium |
+| `kolkata` | Kolkata central area (19 RSU locations) | Large (36K edges) |
+| `low` / `medium` / `high` | Traffic density variants | Small |
+
+## Kolkata Scenario with Real RSU Names
+
+The Kolkata scenario supports custom RSU configuration with real place names:
+
+```bash
+# List RSU locations with real names
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --rsu-config data/rsu_config_kolkata.json \
+  --list-rsus
+
+# Run GUI with named RSUs
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --gui \
+  --rsu-config data/rsu_config_kolkata.json \
+  --controlled-source ESPLANADE \
+  --controlled-destination SEALDAH \
+  --controlled-count 10
+```
+
+Available RSU locations include: `ESPLANADE`, `PARK_STREET`, `SEALDAH`, `COLLEGE_STREET`, `DALHOUSIE`, `BOWBAZAR`, `CHANDNI_CHOWK`, `MOULALI`, and more. See [data/README.md](../data/README.md) for the full list.
 
 ## Phase 1 objective
 Connect SUMO step loop to data logging at 1 Hz for:
@@ -250,6 +287,29 @@ python3 sumo/run_sumo_pipeline.py --scenario demo --gui --max-steps 1800 --traff
 ```
 
 Note: With the current runner behavior, `--emergency-count 3` produces an effective emergency cohort of 9 vehicles (3x).
+
+## Full Hybrid Demo Command
+
+Run all features at once:
+
+```bash
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --gui \
+  --rsu-config data/rsu_config_kolkata.json \
+  --traffic-scale 2.0 \
+  --enable-rl-signal-control \
+  --enable-emergency-priority \
+  --enable-hybrid-uplink-stub \
+  --enable-runtime-logging \
+  --controlled-count 10 \
+  --controlled-source ESPLANADE \
+  --controlled-destination SEALDAH \
+  --emergency-count 3 \
+  --emergency-source PARK_STREET \
+  --emergency-destination COLLEGE_STREET \
+  --max-steps 600
+```
 
 ## Forecast Artifact + Visible Hybrid Demo
 - Start server with forecast artifact inference enabled (terminal 1):

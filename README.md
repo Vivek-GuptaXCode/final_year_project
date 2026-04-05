@@ -5,7 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![SUMO](https://img.shields.io/badge/SUMO-1.18+-green.svg)](https://sumo.dlr.de/)
 
-A hybrid AI traffic management stack built on SUMO simulation that combines **congestion forecasting**, **uncertainty-aware routing**, and **adaptive signal control** for V2X (Vehicle-to-Everything) networks.
+A hybrid AI traffic management stack built on SUMO simulation that combines **congestion forecasting**, **uncertainty-aware routing**, **adaptive signal control**, and **hybrid fusion** for V2X (Vehicle-to-Everything) networks.
+
+## Key Features
+
+- 🚦 **RL-Based Signal Control** - DQN-trained traffic light optimization with safety guardrails
+- 🛣️ **Risk-Aware Routing** - Uncertainty-based path selection with congestion forecasting
+- 🚑 **Emergency Vehicle Priority** - Corridor preemption and optimal routing for emergency vehicles
+- 📡 **V2X Communication** - RSU-based telemetry and vehicle-to-infrastructure messaging
+- 🗺️ **Real City Networks** - Kolkata central area with 19 named RSU locations
+- 🔄 **Hybrid Fusion** - Integrated controller combining all components (+2.6% improvement over baseline)
 
 ## Architecture
 
@@ -71,22 +80,33 @@ python3 server.py
 # Smoke test (GUI, 2 minutes)
 python3 sumo/run_sumo_pipeline.py --scenario demo --gui --max-steps 120
 
-# Kolkata city map (large network)
-python3 sumo/run_sumo_pipeline.py --scenario kolkata --gui --max-steps 300 --traffic-scale 0.5
-
-# Full pipeline with server uplink + emergency priority
+# Kolkata city map with custom RSU names
 python3 sumo/run_sumo_pipeline.py \
-  --scenario demo --gui --max-steps 1800 \
-  --traffic-scale 1.8 \
-  --enable-hybrid-uplink-stub \
-  --server-url http://127.0.0.1:5000 \
+  --scenario kolkata \
+  --gui \
+  --rsu-config data/rsu_config_kolkata.json \
+  --traffic-scale 1.5
+
+# Full hybrid demo (all features enabled)
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --gui \
+  --rsu-config data/rsu_config_kolkata.json \
+  --traffic-scale 2.0 \
+  --enable-rl-signal-control \
   --enable-emergency-priority \
-  --controlled-count 25 \
-  --controlled-source RSU_A \
-  --controlled-destination RSU_K
+  --enable-hybrid-uplink-stub \
+  --enable-runtime-logging \
+  --controlled-count 10 \
+  --controlled-source ESPLANADE \
+  --controlled-destination SEALDAH \
+  --emergency-count 3 \
+  --emergency-source PARK_STREET \
+  --emergency-destination COLLEGE_STREET \
+  --max-steps 600
 ```
 
-See `sumo/README.md` for full flag reference.
+See [docs/SUMO_FLAGS_REFERENCE.md](docs/SUMO_FLAGS_REFERENCE.md) for full flag reference.
 
 ## Phase Status
 
@@ -95,8 +115,23 @@ See `sumo/README.md` for full flag reference.
 | 1 | Data Pipeline (logging, labeling, splitting) | ✅ Complete |
 | 2 | Congestion Forecasting (LightGBM, 87.3% acc, 91.3% F1) | ✅ Complete |
 | 3 | Uncertainty-Aware Routing (risk score + confidence fallback) | ✅ Complete |
-| 4 | Adaptive Signal Control (RL/MARL) | ✅ Complete |
-| 5 | Hybrid Fusion Controller | 🔄 In Progress |
+| 4 | Adaptive Signal Control (RL/DQN with safety guardrails) | ✅ Complete |
+| 5 | Hybrid Fusion Controller (+2.6% improvement @ 3x traffic) | ✅ Complete |
+
+## Kolkata RSU Locations
+
+The system includes 19 strategically placed RSUs in central Kolkata:
+
+| RSU ID | Location | Description |
+|--------|----------|-------------|
+| ESPLANADE | Esplanade | Central bus terminus, Metro hub |
+| PARK_STREET | Park Street | Entertainment and restaurant district |
+| SEALDAH | Sealdah Station | Major railway terminus |
+| COLLEGE_STREET | College Street | Book market, Presidency University |
+| DALHOUSIE | Dalhousie Square | Near Writers Building, historic area |
+| BOWBAZAR | Bowbazar | Metro corridor, jewelry market |
+| CHANDNI_CHOWK | Chandni Chowk | Near Metro station, major intersection |
+| ... | ... | [See full list](data/README.md#rsu-configuration) |
 
 ## Requirements
 
@@ -127,13 +162,14 @@ sumo --version
 | Module | README |
 |--------|--------|
 | SUMO Simulation | [sumo/README.md](sumo/README.md) |
+| CLI Flags Reference | [docs/SUMO_FLAGS_REFERENCE.md](docs/SUMO_FLAGS_REFERENCE.md) |
 | Forecasting Models | [models/forecast/README.md](models/forecast/README.md) |
 | Data Pipeline | [pipelines/processing/README.md](pipelines/processing/README.md) |
 | Controllers (RL/Fusion) | [controllers/README.md](controllers/README.md) |
 | Routing | [routing/README.md](routing/README.md) |
 | Evaluation | [evaluation/README.md](evaluation/README.md) |
 | Experiments | [experiments/README.md](experiments/README.md) |
-| Data | [data/README.md](data/README.md) |
+| Data & RSU Config | [data/README.md](data/README.md) |
 
 ## Contributing
 

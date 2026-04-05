@@ -22,7 +22,7 @@ controllers/
     └── run_ablation.py        # Ablation study runner
 ```
 
-## Phase 4: Reinforcement Learning Signal Control
+## Phase 4: Reinforcement Learning Signal Control ✅
 
 ### Overview
 
@@ -59,11 +59,20 @@ hook = RLInferenceHook(model_path="models/rl/artifacts/latest")
 action = hook.get_action(state_vector)
 ```
 
-## Phase 5: Hybrid Fusion Controller
+## Phase 5: Hybrid Fusion Controller ✅
 
 ### Overview
 
 The fusion module combines Phase 3 (risk-aware routing) and Phase 4 (RL signal control) into a unified controller that coordinates both systems for optimal traffic management.
+
+**Key Results**: +2.6% improvement over baseline at 3x traffic scale with conservative routing parameters.
+
+### Key Optimizations
+
+1. **Conservative Routing** - Max 12% reroute fraction prevents route oscillation
+2. **Cooldown Period** - 45-second minimum between rerouting decisions
+3. **Selective Rerouting** - Only reroutes vehicles in congested RSU zones
+4. **SUMO Actuated Baseline** - Fair comparison against adaptive signals
 
 ### Ablation Studies
 
@@ -71,18 +80,24 @@ Nine configurations for systematic evaluation:
 
 | Config | Routing | Signal Control | Description |
 |--------|---------|----------------|-------------|
-| `full_hybrid` | Risk-aware | RL | Full system |
+| `full_hybrid` | Risk-aware | RL | Full system (+2.6% @ 3x) |
 | `routing_only` | Risk-aware | Fixed | Routing without RL |
 | `signal_only` | None | RL | RL signals only |
-| `baseline` | None | Fixed | No AI |
+| `baseline` | None | Actuated | SUMO actuated (baseline) |
 | `no_uncertainty` | Probability only | RL | No uncertainty estimation |
 | ... | ... | ... | ... |
 
 ### Running Ablation Studies
 
 ```bash
+# Single configuration
 python3 controllers/fusion/run_ablation.py --config full_hybrid --steps 1800
-python3 controllers/fusion/run_ablation.py --all --steps 1800  # Run all configs
+
+# All configurations
+python3 controllers/fusion/run_ablation.py --all --steps 1800
+
+# High traffic stress test (3x scale)
+python3 controllers/fusion/run_ablation.py --config full_hybrid --steps 1800 --traffic-scale 3.0
 ```
 
 ## Integration with SUMO
