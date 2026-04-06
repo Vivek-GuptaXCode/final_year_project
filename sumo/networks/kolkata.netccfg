@@ -19,7 +19,9 @@
 
     <tls_building>
         <tls.discard-simple value="true"/>
+        <tls.guess value="true"/>
         <tls.guess-signals value="true"/>
+        <tls.ignore-internal-junction-jam value="true"/>
     </tls_building>
 
     <ramp_guessing>

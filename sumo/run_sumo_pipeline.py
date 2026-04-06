@@ -4,9 +4,11 @@ import argparse
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import time
+from typing import Any
 from urllib import error, request
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
@@ -254,6 +256,18 @@ def parse_args() -> argparse.Namespace:
         help="Duration to hold non-emergency traffic stopped on emergency corridor edges.",
     )
     parser.add_argument(
+        "--emergency-priority-interval-steps",
+        type=int,
+        default=2,
+        help="Run emergency priority policy every N simulation steps (default: 2).",
+    )
+    parser.add_argument(
+        "--marker-refresh-steps",
+        type=int,
+        default=4,
+        help="Refresh controlled/emergency vehicle markers every N simulation steps (default: 4).",
+    )
+    parser.add_argument(
         "--enable-runtime-logging",
         action="store_true",
         help="Enable Phase-1 1 Hz logging to data/raw/<run_id>/ (RSU + edge + manifest).",
@@ -339,6 +353,21 @@ def parse_args() -> argparse.Namespace:
         default=4,
         help="Max phase switches allowed per 60-s rolling window (anti-oscillation).",
     )
+    parser.add_argument(
+        "--rl-max-controlled-tls",
+        type=int,
+        default=96,
+        help=(
+            "Upper bound on auto-discovered TLS controllers for large maps. "
+            "Use 0 to disable limiting."
+        ),
+    )
+    parser.add_argument(
+        "--rl-step-interval-steps",
+        type=int,
+        default=2,
+        help="Compute/apply RL signal actions every N simulation steps (default: 2).",
+    )
     return parser.parse_args()
 
 
@@ -355,14 +384,14 @@ def _post_json(url: str, payload: dict, timeout_seconds: float) -> dict | None:
 
 def _update_edge_weights_from_congestion(traci_module, *, conservative: bool = True) -> int:
     """Update SUMO edge travel times based on real-time congestion.
-    
+
     This implements dynamic edge weight updates (key technique from PressLight/MA2C).
     Vehicles rerouting will use these updated weights for path finding.
-    
+
     Args:
         traci_module: The SUMO TraCI module
         conservative: If True, use gentler penalties to avoid route oscillation
-        
+
     Returns number of edges updated.
     """
     updated = 0
@@ -378,7 +407,7 @@ def _update_edge_weights_from_congestion(traci_module, *, conservative: bool = T
                 halting = traci_module.edge.getLastStepHaltingNumber(edge_id)
                 # Get mean speed
                 mean_speed = traci_module.edge.getLastStepMeanSpeed(edge_id)
-                
+
                 # Conservative mode: Only penalize severely congested edges
                 # This avoids route oscillation where all vehicles switch together
                 if conservative:
@@ -411,12 +440,12 @@ def _filter_vehicles_for_rerouting(
     min_remaining_edges: int = 3,
 ) -> list[str]:
     """Filter vehicles that would benefit from rerouting.
-    
+
     Avoids rerouting vehicles that are:
     - Too close to destination (would add overhead without benefit)
     - Already on optimal path (short remaining route)
     - Currently waiting/stopped (may cause issues)
-    
+
     This is a key optimization from traffic engineering literature.
     """
     eligible = []
@@ -426,10 +455,10 @@ def _filter_vehicles_for_rerouting(
             route = traci_module.vehicle.getRoute(vid)
             route_idx = traci_module.vehicle.getRouteIndex(vid)
             remaining_edges = len(route) - route_idx - 1
-            
+
             if remaining_edges < min_remaining_edges:
                 continue
-            
+
             # Estimate remaining distance
             remaining_dist = 0.0
             current_edge = traci_module.vehicle.getRoadID(vid)
@@ -437,7 +466,7 @@ def _filter_vehicles_for_rerouting(
                 pos_on_edge = traci_module.vehicle.getLanePosition(vid)
                 edge_length = traci_module.lane.getLength(traci_module.vehicle.getLaneID(vid))
                 remaining_dist = edge_length - pos_on_edge
-            
+
             # Add remaining edges
             for edge in route[route_idx + 1:]:
                 if not edge.startswith(":"):
@@ -445,15 +474,15 @@ def _filter_vehicles_for_rerouting(
                         remaining_dist += traci_module.lane.getLength(edge + "_0")
                     except Exception:
                         remaining_dist += 100.0  # Estimate
-            
+
             if remaining_dist < min_remaining_distance:
                 continue
-            
+
             # Vehicle is eligible for rerouting
             eligible.append(vid)
         except Exception:
             continue
-    
+
     return eligible
 
 
@@ -463,13 +492,13 @@ def _prioritize_vehicles_by_delay(
     target_count: int,
 ) -> list[str]:
     """Prioritize vehicles with highest accumulated delay for rerouting.
-    
+
     Vehicles stuck in traffic benefit most from rerouting.
     This improves overall efficiency vs random selection.
     """
     if len(vehicle_ids) <= target_count:
         return vehicle_ids
-    
+
     vehicle_delays = []
     for vid in vehicle_ids:
         try:
@@ -477,7 +506,7 @@ def _prioritize_vehicles_by_delay(
             vehicle_delays.append((vid, waiting_time))
         except Exception:
             vehicle_delays.append((vid, 0.0))
-    
+
     # Sort by waiting time (highest first) and return top target_count
     vehicle_delays.sort(key=lambda x: -x[1])
     return [vid for vid, _ in vehicle_delays[:target_count]]
@@ -589,11 +618,12 @@ def _apply_emergency_priority_policy(
     *,
     sim_time: float,
     vehicle_ids: list[str],
+    emergency_vehicle_ids: list[str],
     held_until: dict[str, float],
     lookahead_edges: int,
     hold_seconds: float,
 ) -> dict[str, int]:
-    emergency_ids = [vid for vid in vehicle_ids if _is_emergency_vehicle(traci_module, vid)]
+    emergency_ids = emergency_vehicle_ids
     corridor_edges: set[str] = set()
     emergency_reroutes = 0
 
@@ -638,9 +668,15 @@ def _apply_emergency_priority_policy(
             except Exception:
                 continue
             if road_id in corridor_edges:
+                current_hold_until = float(held_until.get(vid, -1.0))
+                next_hold_until = sim_time + max(0.1, hold_seconds)
+                if current_hold_until > sim_time:
+                    # Already held; extend the hold window without repeatedly forcing setSpeed.
+                    held_until[vid] = max(current_hold_until, next_hold_until)
+                    continue
                 try:
                     traci_module.vehicle.setSpeed(vid, 0.0)
-                    held_until[vid] = sim_time + max(0.1, hold_seconds)
+                    held_until[vid] = next_hold_until
                     preempted += 1
                 except Exception:
                     continue
@@ -759,28 +795,28 @@ def _apply_server_reroute_policy(
     else:
         if reroute_fraction <= 0.0:
             return {"count": 0, "vehicle_ids": []}
-        
+
         # IMPROVEMENT: Filter vehicles that would benefit from rerouting
         # Skip vehicles near destination or with short remaining routes
         eligible_vehicles = _filter_vehicles_for_rerouting(
-            traci_module, 
+            traci_module,
             vehicle_ids,
             min_remaining_distance=150.0,
             min_remaining_edges=2,
         )
-        
+
         if not eligible_vehicles:
             return {"count": 0, "vehicle_ids": []}
-        
+
         # Calculate target count from eligible vehicles
         target_count = max(1, int(len(eligible_vehicles) * reroute_fraction))
-        
+
         # IMPROVEMENT: Prioritize vehicles with highest delay
         # Vehicles stuck in traffic benefit most from rerouting
         if planned_reroutes:
             # Use server directives but filter to eligible
             planned_reroutes = [
-                (vid, mode) for vid, mode in planned_reroutes 
+                (vid, mode) for vid, mode in planned_reroutes
                 if vid in eligible_vehicles
             ][:target_count]
         else:
@@ -1171,7 +1207,7 @@ def _load_rsu_config_from_json(
     net_file: Path,
 ) -> list[tuple[str, str, float, float, str]]:
     """Load RSU configuration from JSON file with custom placements and names.
-    
+
     Returns list of (alias/id, junction_id, x, y, display_name) tuples.
     Junction IDs are validated against the network; if exact match not found,
     finds nearest junction to specified coordinates.
@@ -1182,19 +1218,19 @@ def _load_rsu_config_from_json(
     except Exception as e:
         print(f"[SUMO][RSU] Error loading RSU config: {e}")
         return []
-    
+
     rsus = config.get("rsus", [])
     if not rsus:
         print("[SUMO][RSU] No RSUs defined in config file")
         return []
-    
+
     # Parse network junctions for validation/matching
     try:
         root = ET.parse(net_file).getroot()
     except Exception as e:
         print(f"[SUMO][RSU] Error parsing network file: {e}")
         return []
-    
+
     junction_map: dict[str, tuple[float, float]] = {}
     for junction in root.findall("junction"):
         jid = junction.attrib.get("id")
@@ -1206,7 +1242,7 @@ def _load_rsu_config_from_json(
         if jtype in {"internal", "dead_end"}:
             continue
         junction_map[jid] = (float(x_str), float(y_str))
-    
+
     table: list[tuple[str, str, float, float, str]] = []
     for rsu in rsus:
         rsu_id = rsu.get("id", "")
@@ -1214,7 +1250,7 @@ def _load_rsu_config_from_json(
         junction_id = rsu.get("junction_id", "")
         x = rsu.get("x", 0.0)
         y = rsu.get("y", 0.0)
-        
+
         # Try exact junction match first
         if junction_id in junction_map:
             jx, jy = junction_map[junction_id]
@@ -1228,7 +1264,7 @@ def _load_rsu_config_from_json(
                 if dist < best_dist:
                     best_dist = dist
                     best_junction = (jid, jx, jy)
-            
+
             if best_junction and best_dist < 200.0:  # within 200m tolerance
                 jid, jx, jy = best_junction
                 table.append((rsu_id, jid, jx, jy, display_name))
@@ -1236,7 +1272,7 @@ def _load_rsu_config_from_json(
                     print(f"[SUMO][RSU] {rsu_id}: matched to {jid} ({best_dist:.1f}m away)")
             else:
                 print(f"[SUMO][RSU] Warning: {rsu_id} - no junction found within 200m")
-    
+
     print(f"[SUMO][RSU] Loaded {len(table)} RSUs from {config_path.name}")
     return table
 
@@ -1527,37 +1563,95 @@ def _apply_visual_vehicle_markers(traci_module, vehicle_ids: list[str]) -> dict[
     marked_emergency = 0
 
     for vid in vehicle_ids:
-        try:
-            type_id = str(traci_module.vehicle.getTypeID(vid))
-        except Exception:
-            continue
-
-        if type_id == "controlled_ai_vehicle":
-            _highlight_vehicle_circle(
-                traci_module,
-                vid,
-                set_vehicle_color=True,
-                vehicle_color=(0, 51, 153, 255),
-                highlight_color=(64, 224, 255, 170),
-                radius_m=5.2,
-            )
-            marked_controlled += 1
-            continue
-
-        if type_id == "emergency_priority_vehicle" or _is_emergency_vehicle(traci_module, vid):
-            _highlight_vehicle_circle(
-                traci_module,
-                vid,
-                set_vehicle_color=True,
-                vehicle_color=(255, 255, 0, 255),
-                highlight_color=(255, 69, 0, 190),
-                radius_m=6.6,
-            )
-            marked_emergency += 1
+        _highlight_vehicle_circle(
+            traci_module,
+            vid,
+            set_vehicle_color=True,
+            vehicle_color=(0, 51, 153, 255),
+            highlight_color=(64, 224, 255, 170),
+            radius_m=5.2,
+        )
+        marked_controlled += 1
 
     return {
         "controlled_marked": marked_controlled,
         "emergency_marked": marked_emergency,
+    }
+
+
+def _classify_vehicle_marker_targets(
+    traci_module,
+    *,
+    vehicle_ids: list[str],
+    marker_type_cache: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    """Classify active vehicles for marker/emergency logic with cache reuse.
+
+    Cache values are one of: controlled, emergency, other.
+    """
+
+    if len(marker_type_cache) > max(2000, len(vehicle_ids) * 2):
+        active_ids = set(vehicle_ids)
+        for stale_id in list(marker_type_cache.keys()):
+            if stale_id not in active_ids:
+                marker_type_cache.pop(stale_id, None)
+
+    controlled_ids: list[str] = []
+    emergency_ids: list[str] = []
+
+    for vid in vehicle_ids:
+        marker_kind = marker_type_cache.get(vid)
+        if marker_kind is None:
+            marker_kind = "other"
+            type_id = ""
+            try:
+                type_id = str(traci_module.vehicle.getTypeID(vid)).lower()
+            except Exception:
+                type_id = ""
+
+            if type_id == "controlled_ai_vehicle":
+                marker_kind = "controlled"
+            elif type_id == "emergency_priority_vehicle":
+                marker_kind = "emergency"
+            else:
+                try:
+                    vehicle_class = str(traci_module.vehicle.getVehicleClass(vid)).lower()
+                except Exception:
+                    vehicle_class = ""
+                if vehicle_class == "emergency" or any(
+                    token in type_id for token in ("emergency", "ambulance", "fire", "police")
+                ):
+                    marker_kind = "emergency"
+
+            marker_type_cache[vid] = marker_kind
+
+        if marker_kind == "controlled":
+            controlled_ids.append(vid)
+        elif marker_kind == "emergency":
+            emergency_ids.append(vid)
+
+    return controlled_ids, emergency_ids
+
+
+def _apply_emergency_vehicle_markers(
+    traci_module,
+    emergency_vehicle_ids: list[str],
+) -> dict[str, int]:
+    marked = 0
+    for vid in emergency_vehicle_ids:
+        _highlight_vehicle_circle(
+            traci_module,
+            vid,
+            set_vehicle_color=True,
+            vehicle_color=(255, 255, 0, 255),
+            highlight_color=(255, 69, 0, 190),
+            radius_m=6.6,
+        )
+        marked += 1
+
+    return {
+        "controlled_marked": 0,
+        "emergency_marked": marked,
     }
 
 
@@ -1795,17 +1889,17 @@ def _generate_rsu_poi_add_file(
         "<additional>",
     ]
     placed_labels: list[tuple[float, float]] = []
-    
+
     # Build full node list with aliases first (to maintain consistent alias assignment)
     nodes_with_alias: list[tuple[str, str, float, float]] = []
     for idx, (jid, x, y) in enumerate(rsu_nodes, start=1):
         alias = _to_bijective_base26_label(idx)
         nodes_with_alias.append((alias, jid, x, y))
-    
+
     # Filter by whitelist if provided
     if rsu_whitelist:
         nodes_with_alias = [(alias, jid, x, y) for alias, jid, x, y in nodes_with_alias if alias in rsu_whitelist]
-    
+
     for alias, jid, x, y in nodes_with_alias:
         label_text = f"RSU_{alias}"
 
@@ -1853,34 +1947,34 @@ def _generate_rsu_poi_from_config(
     rsu_config_table: list[tuple[str, str, float, float, str]],
 ) -> tuple[Path | None, int]:
     """Generate RSU POI file from custom configuration with display names.
-    
+
     Args:
         net_file: Path to the SUMO network file
         scenario_name: Name of the scenario for output file naming
         rsu_range_m: RSU range radius in meters
         rsu_config_table: List of (rsu_id, junction_id, x, y, display_name) tuples
-        
+
     Returns:
         (output_path, rsu_count) tuple
     """
     if not rsu_config_table:
         return None, 0
-    
+
     try:
         root = ET.parse(net_file).getroot()
     except Exception:
         return None, 0
-    
+
     output_path = net_file.parent.parent / "scenarios" / f"{scenario_name}_rsu_pois.add.xml"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     lines = ["<additional>"]
     placed_labels: list[tuple[float, float]] = []
-    
+
     for idx, (rsu_id, jid, x, y, display_name) in enumerate(rsu_config_table, start=1):
         # Use display_name for label, fallback to rsu_id
         label_text = display_name if display_name else f"RSU_{rsu_id}"
-        
+
         range_shape = _build_circle_shape_points(x=x, y=y, radius_m=rsu_range_m)
         label_x, label_y, label_dir = _select_rsu_label_position(
             root,
@@ -1889,7 +1983,7 @@ def _generate_rsu_poi_from_config(
             y=y,
             alias_index=idx,
         )
-        
+
         # Keep text labels spread out
         for _ in range(4):
             if not any(_distance_xy((label_x, label_y), pos) < 16.0 for pos in placed_labels):
@@ -1897,7 +1991,7 @@ def _generate_rsu_poi_from_config(
             label_x += label_dir[0] * 7.0
             label_y += label_dir[1] * 7.0
         placed_labels.append((label_x, label_y))
-        
+
         # RSU range circle (red outline)
         lines.append(
             f'    <poly id="rsu_range_{escape(jid)}" type="rsu_range" color="255,0,0,255" layer="12" lineWidth="2" fill="false" shape="{range_shape}"/>'
@@ -1912,7 +2006,7 @@ def _generate_rsu_poi_from_config(
         )
         lines.append(f'        <param key="name" value="{escape(label_text)}"/>')
         lines.append("    </poi>")
-    
+
     lines.append("</additional>")
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return output_path, len(rsu_config_table)
@@ -1934,13 +2028,13 @@ def main() -> None:
     rsu_config_table: list[tuple[str, str, float, float, str]] = []  # With display names
     rsu_alias_map: dict[str, str] = {}
     use_custom_rsu_config = False
-    
+
     if args.rsu_config and net_file is not None:
         # Load custom RSU configuration from JSON
         rsu_config_path = Path(args.rsu_config)
         if not rsu_config_path.is_absolute():
             rsu_config_path = project_root / rsu_config_path
-        
+
         if rsu_config_path.exists():
             rsu_config_table = _load_rsu_config_from_json(rsu_config_path, net_file)
             if rsu_config_table:
@@ -1950,7 +2044,7 @@ def main() -> None:
                 rsu_alias_map = {rsu_id: jid for rsu_id, jid, _x, _y, _name in rsu_config_table}
         else:
             print(f"[SUMO][RSU] Warning: Config file not found: {rsu_config_path}")
-    
+
     if not use_custom_rsu_config and net_file is not None:
         # Fall back to auto-detection
         rsu_spacing_for_alias = args.rsu_min_spacing_m
@@ -1963,7 +2057,7 @@ def main() -> None:
             max_count=max(1, args.rsu_max_count),
             min_spacing_m=max(1.0, rsu_spacing_for_alias),
         )
-        
+
         # Apply RSU whitelist filter if specified
         if args.rsu_whitelist:
             whitelist_set = set()
@@ -1975,7 +2069,7 @@ def main() -> None:
                 elif alias.startswith("RSU"):
                     alias = alias[3:]
                 whitelist_set.add(alias)
-            
+
             original_count = len(rsu_alias_table)
             rsu_alias_table = [
                 (alias, jid, x, y) for alias, jid, x, y in rsu_alias_table
@@ -1986,7 +2080,7 @@ def main() -> None:
                 print(f"[SUMO][RSU] Active RSUs: {', '.join('RSU_' + alias for alias, _, _, _ in rsu_alias_table)}")
             else:
                 print(f"[SUMO][RSU] Warning: Whitelist filtered out all RSUs! Check aliases.")
-        
+
         rsu_alias_map = {alias: jid for alias, jid, _x, _y in rsu_alias_table}
 
     if args.list_rsus:
@@ -2226,7 +2320,7 @@ def main() -> None:
                     f"out of {candidate_count} candidates{whitelist_note} (min-inc-lanes={args.rsu_min_inc_lanes}, "
                     f"min-spacing={rsu_spacing:.1f}m, max-count={args.rsu_max_count})."
                 )
-        
+
         if config.gui_use_osg_view or args.three_d:
             print(
                 "[SUMO] Note: OSG 3D mode may hide POI/poly overlays on some builds. "
@@ -2406,19 +2500,35 @@ def main() -> None:
         except Exception:
             reroute_cooldown_seconds = 20.0
         reroute_cooldown_seconds = max(1.0, reroute_cooldown_seconds)
+        marker_refresh_steps = max(1, int(getattr(args, "marker_refresh_steps", 4)))
+        emergency_priority_interval_steps = max(
+            1,
+            int(getattr(args, "emergency_priority_interval_steps", 2)),
+        )
         held_until: dict[str, float] = {}
         reroute_highlight_until: dict[str, float] = {}
         reroute_cooldown_until: dict[str, float] = {}
+        marker_type_cache: dict[str, str] = {}
         enable_vehicle_markers = args.controlled_count > 0 or args.emergency_count > 0
         rsu_graph_registered: list[bool] = [False]  # mutable flag for closure
+        last_emergency_log_signature: tuple[int, int, int] | None = None
 
         def _on_step(step_idx: int, sim_time: float, traci_module) -> None:
-            nonlocal last_hybrid_push_sim_time, runtime_logger_failed
+            nonlocal last_hybrid_push_sim_time, runtime_logger_failed, last_emergency_log_signature
             try:
                 vehicle_ids = list(traci_module.vehicle.getIDList())
             except Exception:
                 return
             active_vehicle_ids = set(vehicle_ids)
+            controlled_vehicle_ids: list[str] = []
+            emergency_vehicle_ids: list[str] = []
+
+            if enable_vehicle_markers or args.enable_emergency_priority or args.enable_hybrid_uplink_stub:
+                controlled_vehicle_ids, emergency_vehicle_ids = _classify_vehicle_marker_targets(
+                    traci_module,
+                    vehicle_ids=vehicle_ids,
+                    marker_type_cache=marker_type_cache,
+                )
 
             if runtime_logger is not None and not runtime_logger_failed:
                 try:
@@ -2432,15 +2542,20 @@ def main() -> None:
                     runtime_logger_failed = True
                     print(f"[SUMO][LOGGER] Disabled after runtime error: {exc}")
 
-            if enable_vehicle_markers:
-                marker_stats = _apply_visual_vehicle_markers(traci_module, vehicle_ids)
+            if enable_vehicle_markers and step_idx % marker_refresh_steps == 0:
+                marker_stats = _apply_visual_vehicle_markers(traci_module, controlled_vehicle_ids)
+                emergency_marker_stats = _apply_emergency_vehicle_markers(
+                    traci_module,
+                    emergency_vehicle_ids,
+                )
                 if step_idx % 50 == 0 and (
-                    marker_stats["controlled_marked"] > 0 or marker_stats["emergency_marked"] > 0
+                    marker_stats["controlled_marked"] > 0
+                    or emergency_marker_stats["emergency_marked"] > 0
                 ):
                     print(
                         "[SUMO][MARKERS] deep_blue_controlled={c} bright_yellow_emergency={e}".format(
                             c=marker_stats["controlled_marked"],
-                            e=marker_stats["emergency_marked"],
+                            e=emergency_marker_stats["emergency_marked"],
                         )
                     )
 
@@ -2456,24 +2571,34 @@ def main() -> None:
             if step_idx % 50 == 0 and reroute_marker_count > 0:
                 print(f"[SUMO][MARKERS] reroute_highlights={reroute_marker_count}")
 
-            if args.enable_emergency_priority:
+            if args.enable_emergency_priority and step_idx % emergency_priority_interval_steps == 0:
                 emergency_stats = _apply_emergency_priority_policy(
                     traci_module,
                     sim_time=sim_time,
                     vehicle_ids=vehicle_ids,
+                    emergency_vehicle_ids=emergency_vehicle_ids,
                     held_until=held_until,
                     lookahead_edges=max(1, args.emergency_corridor_lookahead_edges),
                     hold_seconds=max(0.1, args.emergency_hold_seconds),
                 )
                 if emergency_stats["emergency_count"] > 0:
-                    print(
-                        "[SUMO][EMERGENCY] active={a} rerouted={r} preempted={p} released={rel}".format(
-                            a=emergency_stats["emergency_count"],
-                            r=emergency_stats["emergency_reroutes"],
-                            p=emergency_stats["corridor_preempted"],
-                            rel=emergency_stats["released"],
-                        )
+                    emergency_signature = (
+                        emergency_stats["emergency_count"],
+                        emergency_stats["corridor_preempted"],
+                        emergency_stats["released"],
                     )
+                    if step_idx % 20 == 0 or emergency_signature != last_emergency_log_signature:
+                        print(
+                            "[SUMO][EMERGENCY] active={a} rerouted={r} preempted={p} released={rel}".format(
+                                a=emergency_stats["emergency_count"],
+                                r=emergency_stats["emergency_reroutes"],
+                                p=emergency_stats["corridor_preempted"],
+                                rel=emergency_stats["released"],
+                            )
+                        )
+                    last_emergency_log_signature = emergency_signature
+                else:
+                    last_emergency_log_signature = None
 
             # ── Phase 4: RL adaptive signal control ──────────────────────────
             if rl_signal_controller is not None:
@@ -2553,9 +2678,6 @@ def main() -> None:
                     continue
             avg_speed_mps = (sum(speeds) / len(speeds)) if speeds else 0.0
 
-            emergency_vehicle_ids = [
-                vid for vid in vehicle_ids if _is_emergency_vehicle(traci_module, vid)
-            ]
             uplink_payload = {
                 "rsu_id": dominant_jid,
                 "timestamp": sim_time,

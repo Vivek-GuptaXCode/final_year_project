@@ -4,6 +4,26 @@
 
 Successfully integrated Kolkata city map (12.6 MB OSM data) into the traffic management system.
 
+## Traffic Light Recovery (April 2026)
+
+Kolkata traffic signal coverage was rebuilt using SUMO `netconvert` TLS guessing.
+
+- **Before rebuild**: 21 traffic lights / 2,612 non-internal junctions
+- **After rebuild**: 459 traffic lights / 2,612 non-internal junctions
+
+Rebuild command used:
+
+```bash
+netconvert \
+  --sumo-net-file sumo/networks/kolkata.net.xml \
+  -o sumo/networks/kolkata.net.tlsfix.tmp.xml \
+  --tls.guess true \
+  --tls.guess-signals true \
+  --tls.discard-simple true \
+  --tls.ignore-internal-junction-jam true
+mv sumo/networks/kolkata.net.tlsfix.tmp.xml sumo/networks/kolkata.net.xml
+```
+
 ## Generated Files
 
 | File | Size | Description |
@@ -20,7 +40,7 @@ Successfully integrated Kolkata city map (12.6 MB OSM data) into the traffic man
 - **Size**: ~4km × 4km
 - **Edges**: 36,255 (largest network in system, 4x bigger than "city")
 - **Junctions**: 6,246
-- **Traffic lights**: Auto-detected by SUMO
+- **Traffic lights**: 459 (`<tlLogic>` entries after rebuild)
 - **Expected RSUs**: ~20-25 (based on high-degree junctions)
 
 ## Usage
@@ -33,6 +53,14 @@ python3 sumo/run_sumo_pipeline.py --scenario kolkata --max-steps 1800
 
 # With GUI
 python3 sumo/run_sumo_pipeline.py --scenario kolkata --gui --max-steps 1800
+
+# With GUI (recommended low-lag settings for large maps)
+python3 sumo/run_sumo_pipeline.py \
+  --scenario kolkata \
+  --gui \
+  --max-steps 1800 \
+  --marker-refresh-steps 4 \
+  --emergency-priority-interval-steps 2
 
 # Reduced traffic for testing
 python3 sumo/run_sumo_pipeline.py --scenario kolkata --traffic-scale 0.5 --max-steps 300
@@ -64,7 +92,9 @@ python3 sumo/run_sumo_pipeline.py \
   --gui \
   --max-steps 1800 \
   --enable-rl-signal-control \
-  --rl-model-dir models/rl/artifacts/latest
+  --rl-model-dir models/rl/artifacts/latest \
+  --rl-max-controlled-tls 96 \
+  --rl-step-interval-steps 2
 ```
 
 ## Code Changes
@@ -102,7 +132,8 @@ All Phase 1-5 components work automatically:
 1. **Reduce traffic scale**: Use `--traffic-scale 0.5` for testing
 2. **Shorter simulations**: Start with `--max-steps 300` 
 3. **Disable GUI**: Run headless for data collection
-4. **Simplify network**: (Future) Filter minor roads during netconvert
+4. **Throttle expensive controls**: Use `--marker-refresh-steps 4` and `--emergency-priority-interval-steps 2`
+5. **Limit RL scope on large maps**: Use `--rl-max-controlled-tls 96 --rl-step-interval-steps 2`
 
 ## Validation
 

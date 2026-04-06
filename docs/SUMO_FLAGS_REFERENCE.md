@@ -227,6 +227,16 @@ Simulate emergency vehicles with priority routing and traffic preemption.
 - **Description**: Duration to hold non-emergency traffic stopped on corridor
 - **Example**: `--emergency-hold-seconds 15`
 
+### `--emergency-priority-interval-steps EMERGENCY_PRIORITY_INTERVAL_STEPS`
+- **Default**: `2`
+- **Description**: Run emergency routing/corridor policy every N simulation steps to reduce per-step overhead on large maps
+- **Example**: `--emergency-priority-interval-steps 2`
+
+### `--marker-refresh-steps MARKER_REFRESH_STEPS`
+- **Default**: `4`
+- **Description**: Refresh controlled/emergency GUI vehicle markers every N steps (lower frequency improves GUI smoothness)
+- **Example**: `--marker-refresh-steps 4`
+
 ---
 
 ## Utility Functions
@@ -369,7 +379,7 @@ Phase 4: Adaptive traffic signal control with Deep Q-Networks.
 - **Example**: `--rl-model-dir models/rl/artifacts/phase4_v2`
 
 ### `--rl-tls-ids RL_TLS_IDS`
-- **Default**: Auto-discover all traffic lights
+- **Default**: Auto-discover traffic lights (bounded by `--rl-max-controlled-tls`)
 - **Description**: Comma-separated TLS junction IDs to control
 - **Example**: `--rl-tls-ids "123456,789012,345678"`
 
@@ -387,6 +397,16 @@ Phase 4: Adaptive traffic signal control with Deep Q-Networks.
 - **Default**: `4`
 - **Description**: Max phase switches per 60-s rolling window (anti-oscillation)
 - **Example**: `--rl-max-switches-per-window 6`
+
+### `--rl-max-controlled-tls RL_MAX_CONTROLLED_TLS`
+- **Default**: `96`
+- **Description**: Upper bound on auto-controlled traffic lights for large maps (`0` disables limit)
+- **Example**: `--rl-max-controlled-tls 120`
+
+### `--rl-step-interval-steps RL_STEP_INTERVAL_STEPS`
+- **Default**: `2`
+- **Description**: Apply RL control every N simulation steps to reduce control-loop overhead
+- **Example**: `--rl-step-interval-steps 2`
 
 ---
 

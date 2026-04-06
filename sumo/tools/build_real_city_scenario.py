@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         "--netconvert-options",
         default=(
             "--geometry.remove,--ramps.guess,--junctions.join,--tls.guess-signals,"
-            "--tls.discard-simple"
+            "--tls.discard-simple,--tls.guess,--tls.ignore-internal-junction-jam"
         ),
         help="Comma-separated options passed to osmBuild netconvert.",
     )

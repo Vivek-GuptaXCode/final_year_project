@@ -85,6 +85,10 @@ def build_sumo_command(
         str(seed),
         "--step-length",
         str(config.step_length_seconds),
+        "--no-step-log",
+        "true",
+        "--duration-log.disable",
+        "true",
     ]
 
     if use_gui and config.gui_settings_path is not None:

@@ -66,6 +66,8 @@ class RLSignalController:
         guardrail_cfg: GuardrailConfig | None = None,
         log_interval: int = 100,
         neighbour_k: int = 2,
+        max_controlled_tls: int = 96,
+        step_interval_steps: int = 2,
     ) -> None:
         self._traci = traci_module
         self._tls_ids_override = tls_ids or []
@@ -73,13 +75,36 @@ class RLSignalController:
         self._guardrail_cfg = guardrail_cfg or GuardrailConfig()
         self._log_interval = log_interval
         self._neighbour_k = neighbour_k
+        self._max_controlled_tls = int(max_controlled_tls)
+        self._step_interval_steps = max(1, int(step_interval_steps))
 
         self._env: MultiJunctionEnv | None = None
         self._agents: dict[str, RLPolicy] = {}
         self._initialized = False
         self._step_count = 0
+        self._decision_steps = 0
         self._total_switches = 0
         self._cumulative_reward: dict[str, float] = {}
+
+    def _rank_tls_by_incoming_lanes(self, tls_ids: list[str]) -> list[str]:
+        scored: list[tuple[int, str]] = []
+        for tid in tls_ids:
+            score = 0
+            try:
+                controlled_links = self._traci.trafficlight.getControlledLinks(tid)
+                incoming_lanes: set[str] = set()
+                for link_group in controlled_links:
+                    for link in link_group:
+                        incoming = str(link[0])
+                        if incoming:
+                            incoming_lanes.add(incoming)
+                score = len(incoming_lanes)
+            except Exception:
+                score = 0
+            scored.append((score, tid))
+
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [tid for _score, tid in scored]
 
     def _load_saved_agent(self) -> DQNAgent | ImprovedDQNAgent:
         if self._model_dir is None:
@@ -117,6 +142,19 @@ class RLSignalController:
                 tls_ids = list(self._traci.trafficlight.getIDList())
             except Exception:
                 tls_ids = []
+
+        if (
+            self._max_controlled_tls > 0
+            and not self._tls_ids_override
+            and len(tls_ids) > self._max_controlled_tls
+        ):
+            ranked_ids = self._rank_tls_by_incoming_lanes(tls_ids)
+            original_count = len(tls_ids)
+            tls_ids = ranked_ids[: self._max_controlled_tls]
+            print(
+                "[RL] Large-map optimization: limiting TLS control to "
+                f"{len(tls_ids)}/{original_count} junctions (ranked by incoming lane coverage)."
+            )
 
         if not tls_ids:
             print("[RL] No TLS junctions found — signal control disabled.")
@@ -168,6 +206,14 @@ class RLSignalController:
         if self._env is None:
             return {}
 
+        self._step_count += 1
+        if self._step_interval_steps > 1 and self._step_count % self._step_interval_steps != 0:
+            return {
+                "step": self._step_count,
+                "sim_time": sim_time,
+                "skipped": True,
+            }
+
         obs_map = self._env.observe_all(sim_time)
         tls_ids = self._env.tls_ids
 
@@ -201,21 +247,22 @@ class RLSignalController:
         for tid, r in rewards.items():
             self._cumulative_reward[tid] = self._cumulative_reward.get(tid, 0.0) + r
 
-        self._step_count += 1
+        self._decision_steps += 1
 
-        if self._step_count % self._log_interval == 0:
+        if self._decision_steps % self._log_interval == 0:
             total_halt = sum(
                 float(np.mean(obs_map[tid][MAX_PHASES + 1 : MAX_PHASES + 1 + MAX_LANES]))
                 for tid in tls_ids
             )
             print(
-                f"[RL] step={self._step_count} junctions={len(tls_ids)} "
+                f"[RL] step={self._step_count} decisions={self._decision_steps} junctions={len(tls_ids)} "
                 f"mean_halting_norm={total_halt/max(1,len(tls_ids)):.3f} "
                 f"switches={step_switches}"
             )
 
         return {
             "step": self._step_count,
+            "decision_step": self._decision_steps,
             "sim_time": sim_time,
             "actions": actions,
             "rewards": rewards,
@@ -237,6 +284,8 @@ class RLSignalController:
         min_green = getattr(args, "rl_min_green_seconds", 15.0)
         yellow_dur = getattr(args, "rl_yellow_duration_seconds", 3.0)
         max_switches = getattr(args, "rl_max_switches_per_window", 4)
+        max_controlled_tls = getattr(args, "rl_max_controlled_tls", 96)
+        step_interval_steps = getattr(args, "rl_step_interval_steps", 2)
 
         guardrail_cfg = GuardrailConfig(
             min_green_seconds=float(min_green),
@@ -249,6 +298,8 @@ class RLSignalController:
             tls_ids=tls_ids if tls_ids else None,
             model_dir=model_dir,
             guardrail_cfg=guardrail_cfg,
+            max_controlled_tls=int(max_controlled_tls),
+            step_interval_steps=int(step_interval_steps),
         )
 
     # ── Diagnostics ───────────────────────────────────────────────────────
@@ -257,6 +308,8 @@ class RLSignalController:
         """Return cumulative per-junction stats for end-of-run reporting."""
         return {
             "total_steps": self._step_count,
+            "decision_steps": self._decision_steps,
+            "decision_interval_steps": self._step_interval_steps,
             "junctions_controlled": len(self._agents),
             "signal_switches": int(self._total_switches),
             "cumulative_rewards": {
