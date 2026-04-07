@@ -368,6 +368,32 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="Compute/apply RL signal actions every N simulation steps (default: 2).",
     )
+    parser.add_argument(
+        "--force-congestion-at-junction",
+        default=None,
+        help=(
+            "Junction ID (or RSU alias e.g. DALHOUSIE) to force extreme congestion at. "
+            "All connected edges receive a 9999 s travel-time penalty so every rerouting "
+            "vehicle avoids it. Combine with --controlled-count to send a cohort from "
+            "Sealdah to Park Circus that gets redirected around Dalhousie Square."
+        ),
+    )
+    parser.add_argument(
+        "--force-congestion-at-step",
+        type=int,
+        default=30,
+        help="Simulation step at which to inject the forced junction congestion (default: 30).",
+    )
+    parser.add_argument(
+        "--init-detour-junctions",
+        default=None,
+        help=(
+            "Comma-separated junction IDs (or RSU aliases) to penalise at step 1 so vehicles "
+            "are guided AWAY from these junctions initially (onto the Dalhousie corridor). "
+            "The penalty is lifted automatically at --force-congestion-at-step, after which "
+            "Dalhousie is blocked instead.  Example: 'MOULALI,ESPLANADE,CHANDNI_CHOWK'."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1671,14 +1697,86 @@ def _apply_active_reroute_highlights(
         _highlight_vehicle_circle(
             traci_module,
             vid,
-            set_vehicle_color=False,
-            vehicle_color=(0, 0, 0, 0),
-            highlight_color=(255, 20, 147, 200),
+            set_vehicle_color=True,
+            vehicle_color=(255, 0, 0, 255),
+            highlight_color=(255, 80, 80, 210),
             radius_m=4.7,
             highlight_type=2,
         )
         highlighted += 1
     return highlighted
+
+
+def _get_edges_connected_to_junction(net_file: Path, junction_id: str) -> list[str]:
+    """Return all non-internal edge IDs whose from- or to-junction matches junction_id."""
+    try:
+        root = ET.parse(net_file).getroot()
+    except Exception:
+        return []
+    result: list[str] = []
+    for edge in root.findall("edge"):
+        eid = edge.attrib.get("id", "")
+        if not eid or eid.startswith(":"):
+            continue
+        if edge.attrib.get("function", "") == "internal":
+            continue
+        if edge.attrib.get("from") == junction_id or edge.attrib.get("to") == junction_id:
+            result.append(eid)
+    return result
+
+
+def _force_edge_congestion(traci_module, edge_ids: list[str], penalty_seconds: float = 9999.0) -> int:
+    """Set an extreme travel-time penalty on the given edges so all rerouters avoid them.
+
+    Returns the number of edges successfully penalized.
+    """
+    penalized = 0
+    for eid in edge_ids:
+        try:
+            traci_module.edge.adaptTraveltime(eid, penalty_seconds)
+            penalized += 1
+        except Exception:
+            continue
+    return penalized
+
+
+def _build_edge_junction_map(net_file: Path) -> dict[str, tuple[str, str]]:
+    """Return {edge_id: (from_junction_id, to_junction_id)} for every non-internal edge."""
+    try:
+        root = ET.parse(net_file).getroot()
+    except Exception:
+        return {}
+    result: dict[str, tuple[str, str]] = {}
+    for edge in root.findall("edge"):
+        eid = edge.attrib.get("id", "")
+        if not eid or eid.startswith(":"):
+            continue
+        if edge.attrib.get("function", "") == "internal":
+            continue
+        from_j = edge.attrib.get("from", "")
+        to_j = edge.attrib.get("to", "")
+        if from_j and to_j:
+            result[eid] = (from_j, to_j)
+    return result
+
+
+def _get_rsus_on_route(
+    route_edges: list[str],
+    junction_to_rsu: dict[str, str],
+    edge_to_junctions: dict[str, tuple[str, str]],
+) -> list[str]:
+    """Return ordered, deduplicated RSU display-names whose junctions appear on route_edges."""
+    seen: set[str] = set()
+    rsus: list[str] = []
+    for edge in route_edges:
+        from_j, to_j = edge_to_junctions.get(edge, ("", ""))
+        for jid in (from_j, to_j):
+            if jid and jid in junction_to_rsu:
+                name = junction_to_rsu[jid]
+                if name not in seen:
+                    seen.add(name)
+                    rsus.append(name)
+    return rsus
 
 
 def _build_circle_shape_points(*, x: float, y: float, radius_m: float, points: int = 24) -> str:
@@ -2082,6 +2180,22 @@ def main() -> None:
                 print(f"[SUMO][RSU] Warning: Whitelist filtered out all RSUs! Check aliases.")
 
         rsu_alias_map = {alias: jid for alias, jid, _x, _y in rsu_alias_table}
+
+    # ── RSU path-lookup tables (junction_id → display_name, edge → junctions) ─
+    # Used to translate vehicle routes into human-readable RSU hop sequences.
+    if use_custom_rsu_config:
+        junction_to_rsu_name: dict[str, str] = {
+            jid: display_name
+            for _rsu_id, jid, _x, _y, display_name in rsu_config_table
+        }
+    else:
+        junction_to_rsu_name = {
+            jid: alias
+            for alias, jid, _x, _y in rsu_alias_table
+        }
+    edge_to_junctions: dict[str, tuple[str, str]] = (
+        _build_edge_junction_map(net_file) if net_file is not None else {}
+    )
 
     if args.list_rsus:
         if net_file is None:
@@ -2493,6 +2607,45 @@ def main() -> None:
         except Exception as _rl_exc:
             print(f"[SUMO][RL] Could not load RL controller: {_rl_exc}")
 
+    # ── Forced junction congestion pre-computation ────────────────────────
+    # Resolve RSU alias (e.g. "DALHOUSIE") -> real junction ID, then find
+    # all edges connected to that junction for later travel-time penalisation.
+    forced_congestion_edge_ids: list[str] = []
+    force_congestion_junction_raw = getattr(args, "force_congestion_at_junction", None)
+    if force_congestion_junction_raw:
+        force_congestion_junction = _resolve_rsu_identifier(
+            force_congestion_junction_raw, rsu_alias_map
+        )
+        if net_file is not None:
+            forced_congestion_edge_ids = _get_edges_connected_to_junction(
+                net_file, force_congestion_junction
+            )
+        print(
+            f"[SUMO][CONGESTION] Force-congestion armed: "
+            f"junction='{force_congestion_junction}' "
+            f"(input='{force_congestion_junction_raw}') "
+            f"fires at step={args.force_congestion_at_step}, "
+            f"edges_to_penalize={len(forced_congestion_edge_ids)}"
+        )
+
+    # ── Initial detour pre-computation ────────────────────────────────────
+    # At step 1 these junctions are penalised so vehicles use the Dalhousie
+    # corridor.  The penalty is lifted when Dalhousie is blocked.
+    init_detour_edge_ids: list[str] = []
+    init_detour_raw = getattr(args, "init_detour_junctions", None) or ""
+    for raw_token in [t.strip() for t in init_detour_raw.split(",") if t.strip()]:
+        resolved = _resolve_rsu_identifier(raw_token, rsu_alias_map)
+        if net_file is not None:
+            init_detour_edge_ids.extend(
+                _get_edges_connected_to_junction(net_file, resolved)
+            )
+    if init_detour_edge_ids:
+        print(
+            f"[SUMO][DETOUR] Initial western-route bias armed: "
+            f"{len(init_detour_edge_ids)} edges will be penalised at step 0 (9900s) "
+            f"so vehicles route via Dalhousie; Dalhousie blocked at step {getattr(args, 'force_congestion_at_step', 30)}"
+        )
+
     try:
         last_hybrid_push_sim_time = -1e9
         try:
@@ -2511,6 +2664,9 @@ def main() -> None:
         marker_type_cache: dict[str, str] = {}
         enable_vehicle_markers = args.controlled_count > 0 or args.emergency_count > 0
         rsu_graph_registered: list[bool] = [False]  # mutable flag for closure
+        congestion_injected: list[bool] = [False]   # mutable flag for forced congestion
+        detour_injected: list[bool] = [False]       # mutable flag for initial detour bias
+        controlled_initial_rerouted: set[str] = set()  # controlled vehicles rerouted on first appearance
         last_emergency_log_signature: tuple[int, int, int] | None = None
 
         def _on_step(step_idx: int, sim_time: float, traci_module) -> None:
@@ -2529,6 +2685,33 @@ def main() -> None:
                     vehicle_ids=vehicle_ids,
                     marker_type_cache=marker_type_cache,
                 )
+
+            # ── First-insertion reroute for controlled vehicles ──────────────
+            # Flow vehicles have routes pre-computed at load time.
+            # Use setVia to force controlled vehicles through Dalhousie,
+            # then call rerouteTraveltime to compute a route via that edge.
+            # Edge "1029381530#0" goes south from Dalhousie junction.
+            DALHOUSIE_VIA_EDGE = "1029381530#0"
+            if not congestion_injected[0]:
+                for vid in controlled_vehicle_ids:
+                    if vid not in controlled_initial_rerouted:
+                        if _is_reroute_safe_now(traci_module, vid):
+                            try:
+                                before_r = list(traci_module.vehicle.getRoute(vid))
+                                # Force vehicle through Dalhousie via edge
+                                traci_module.vehicle.setVia(vid, [DALHOUSIE_VIA_EDGE])
+                                traci_module.vehicle.rerouteTraveltime(vid)
+                                after_r = list(traci_module.vehicle.getRoute(vid))
+                                before_rsus = _get_rsus_on_route(before_r, junction_to_rsu_name, edge_to_junctions)
+                                after_rsus = _get_rsus_on_route(after_r, junction_to_rsu_name, edge_to_junctions)
+                                print(
+                                    f"[SUMO][DETOUR] {vid}: "
+                                    f"{'→'.join(before_rsus) or '(no RSU)'} => "
+                                    f"{'→'.join(after_rsus) or '(no RSU)'}"
+                                )
+                            except Exception as e:
+                                print(f"[SUMO][DETOUR] {vid}: setVia failed - {e}")
+                        controlled_initial_rerouted.add(vid)
 
             if runtime_logger is not None and not runtime_logger_failed:
                 try:
@@ -2607,6 +2790,85 @@ def main() -> None:
                 except Exception as _rl_step_exc:
                     if step_idx % 200 == 0:
                         print(f"[SUMO][RL] step error (step={step_idx}): {_rl_step_exc}")
+
+            # ── Step-0 initial detour: bias vehicles onto Dalhousie corridor ──
+            if init_detour_edge_ids and not detour_injected[0] and step_idx == 0:
+                n_det = _force_edge_congestion(traci_module, init_detour_edge_ids, penalty_seconds=9900.0)
+                detour_injected[0] = True
+                print(
+                    f"[SUMO][DETOUR] Western-route bypass penalised: {n_det} edges "
+                    f"→ Sealdah→ParkCircus cohort will route via Dalhousie Square"
+                )
+
+            # ── Forced junction congestion + mass reroute ─────────────────────
+            # At the configured step, penalise every edge touching the blocked
+            # junction and immediately reroute all vehicles to bypass it.
+            # Rerouted vehicles will appear RED in the GUI for the rest of the run.
+            if (
+                forced_congestion_edge_ids
+                and not congestion_injected[0]
+                and step_idx >= getattr(args, "force_congestion_at_step", 30)
+            ):
+                n_penalized = _force_edge_congestion(traci_module, forced_congestion_edge_ids)
+                congestion_injected[0] = True
+                rerouted_count = 0
+                highlight_duration = max(3600.0, float(getattr(args, "reroute_highlight_seconds", 3600.0)))
+                print(
+                    f"\n[SUMO][CONGESTION] *** Dalhousie Square FULLY CONGESTED at t={sim_time:.0f}s *** "
+                    f"{n_penalized} edges penalized"
+                )
+                print(f"{'─'*80}")
+                changed_log: list[tuple[str, str, str]] = []
+                unchanged_count = 0
+                for vid in vehicle_ids:
+                    if not _is_reroute_safe_now(traci_module, vid):
+                        continue
+                    try:
+                        # Snapshot CURRENT route before rerouting
+                        before_route = list(traci_module.vehicle.getRoute(vid))
+                        before_idx = int(traci_module.vehicle.getRouteIndex(vid))
+                        before_remaining = before_route[max(0, before_idx):]
+
+                        # Clear any via constraints so vehicle can freely reroute
+                        traci_module.vehicle.setVia(vid, [])
+                        traci_module.vehicle.rerouteTraveltime(vid)
+                        reroute_highlight_until[vid] = sim_time + highlight_duration
+                        rerouted_count += 1
+
+                        # Snapshot NEW route after rerouting
+                        after_route = list(traci_module.vehicle.getRoute(vid))
+                        after_idx = int(traci_module.vehicle.getRouteIndex(vid))
+                        after_remaining = after_route[max(0, after_idx):]
+
+                        intended_rsus = _get_rsus_on_route(
+                            before_remaining, junction_to_rsu_name, edge_to_junctions
+                        )
+                        rerouted_rsus = _get_rsus_on_route(
+                            after_remaining, junction_to_rsu_name, edge_to_junctions
+                        )
+                        # Always log controlled cohort vehicles; only log others when path changes
+                        is_controlled = vid.startswith("controlled_group_flow")
+                        if intended_rsus != rerouted_rsus or is_controlled:
+                            intended_str = " → ".join(intended_rsus) if intended_rsus else "(no RSU)"
+                            rerouted_str = " → ".join(rerouted_rsus) if rerouted_rsus else "(no RSU)"
+                            changed_log.append((vid, intended_str, rerouted_str))
+                        else:
+                            unchanged_count += 1
+                    except Exception:
+                        continue
+
+                # Print table only for vehicles whose RSU path changed
+                if changed_log:
+                    print(f"{'─'*90}")
+                    print(f"  {'VehicleID':<28}  {'Intended RSU path':<32}  Re-routed RSU path")
+                    print(f"{'─'*90}")
+                    for vid, intended_str, rerouted_str in changed_log:
+                        print(f"  {vid:<28}  {intended_str:<32}  {rerouted_str}")
+                    print(f"{'─'*90}")
+                print(
+                    f"[SUMO][CONGESTION] {rerouted_count} vehicles rerouted (shown RED) | "
+                    f"path changed: {len(changed_log)} | path unchanged: {unchanged_count}\n"
+                )
 
             if not args.enable_hybrid_uplink_stub:
                 return
@@ -2741,6 +3003,7 @@ def main() -> None:
                 or args.emergency_count > 0
                 or runtime_logger is not None
                 or rl_signal_controller is not None
+                or bool(forced_congestion_edge_ids)
             )
             else None,
         )
