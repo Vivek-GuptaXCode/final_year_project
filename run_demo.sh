@@ -10,8 +10,7 @@
 #     travel-time penalty.
 #   • All vehicles are instantly re-routed around Dalhousie
 #     and switch body colour to RED in the GUI.
-#   • 3 emergency vehicles (×3 = 9 total) also depart from
-#     Park Street toward College Street with corridor priority.
+#   • Traffic scale reduced to 1.0 for cleaner visualization.
 #   • RL adaptive signal control, runtime logging, and RSU
 #     overlays are all enabled.
 # ============================================================
@@ -33,7 +32,7 @@ python3 -u sumo/run_sumo_pipeline.py \
     --gui \
     --seed                11 \
     --max-steps           3600 \
-    --traffic-scale       2.0 \
+    --traffic-scale       1.0 \
     \
     --rsu-config          data/rsu_config_kolkata.json \
     --rsu-range-m         120 \
@@ -49,12 +48,12 @@ python3 -u sumo/run_sumo_pipeline.py \
     --force-congestion-at-step     60 \
     --reroute-highlight-seconds    3600 \
     \
-    --enable-emergency-priority \
-    --emergency-count     3 \
-    --emergency-source    "$PARK_STREET_JID" \
-    --emergency-destination "$COLLEGE_STREET_JID" \
-    --emergency-begin     120 \
-    --emergency-end       1800 \
+    # --enable-emergency-priority \
+    # --emergency-count     3 \
+    # --emergency-source    "$PARK_STREET_JID" \
+    # --emergency-destination "$COLLEGE_STREET_JID" \
+    # --emergency-begin     120 \
+    # --emergency-end       1800 \
     \
     --enable-hybrid-uplink-stub \
     --server-url          http://localhost:5000 \
