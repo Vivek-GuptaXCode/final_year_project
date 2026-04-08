@@ -85,6 +85,11 @@ class RLSignalController:
         self._decision_steps = 0
         self._total_switches = 0
         self._cumulative_reward: dict[str, float] = {}
+        
+        # Action caching for performance (skip inference if obs unchanged)
+        self._cached_actions: dict[str, int] = {}
+        self._cached_obs: dict[str, np.ndarray] = {}
+        self._cache_threshold = 0.05  # Only re-infer if obs changed by >5%
 
     def _rank_tls_by_incoming_lanes(self, tls_ids: list[str]) -> list[str]:
         scored: list[tuple[int, str]] = []
@@ -218,26 +223,69 @@ class RLSignalController:
         tls_ids = self._env.tls_ids
 
         actions: dict[str, int] = {}
-        for tid in tls_ids:
-            agent = self._agents.get(tid)
-            if agent is None:
-                actions[tid] = 0
-            elif isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
+        
+        # Check if we can use batch inference (shared agent with batch support)
+        first_agent = self._agents.get(tls_ids[0]) if tls_ids else None
+        use_batch = (
+            first_agent is not None 
+            and isinstance(first_agent, ImprovedDQNAgent)
+            and hasattr(first_agent, 'select_actions_batch')
+        )
+        
+        if use_batch:
+            # Batch inference with caching - skip junctions with unchanged obs
+            agent = first_agent
+            obs_list = []
+            batch_tids = []
+            
+            for tid in tls_ids:
                 obs = obs_map[tid]
-                # DQN was trained on OBS_DIM; MultiJunctionEnv adds 1 dim
                 if obs.shape[0] == OBS_DIM + 1:
-                    # Trim neighbour signal if model was trained without it
                     obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
                 else:
                     obs_input = obs
-                actions[tid] = agent.select_action(obs_input, greedy=True)
-            else:
-                # SimpleActuatedPolicy
-                actions[tid] = agent.select_action(
-                    obs_map[tid][:OBS_DIM],  # strip neighbour dim if present
-                    tid,
-                    sim_time,
-                )
+                
+                # Check cache - use cached action if observation hasn't changed much
+                cached_obs = self._cached_obs.get(tid)
+                if cached_obs is not None and tid in self._cached_actions:
+                    obs_diff = np.abs(obs_input - cached_obs).mean()
+                    if obs_diff < self._cache_threshold:
+                        actions[tid] = self._cached_actions[tid]
+                        continue
+                
+                obs_list.append(obs_input)
+                batch_tids.append(tid)
+            
+            # Only infer for junctions that need updates
+            if obs_list:
+                obs_batch = np.ascontiguousarray(np.stack(obs_list, axis=0), dtype=np.float32)
+                batch_actions = agent.select_actions_batch(obs_batch, greedy=True)
+                for i, tid in enumerate(batch_tids):
+                    action = int(batch_actions[i])
+                    actions[tid] = action
+                    # Update cache
+                    self._cached_actions[tid] = action
+                    self._cached_obs[tid] = obs_list[i].copy()
+        else:
+            # Fallback: per-junction inference
+            for tid in tls_ids:
+                agent = self._agents.get(tid)
+                if agent is None:
+                    actions[tid] = 0
+                elif isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
+                    obs = obs_map[tid]
+                    if obs.shape[0] == OBS_DIM + 1:
+                        obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
+                    else:
+                        obs_input = obs
+                    actions[tid] = agent.select_action(obs_input, greedy=True)
+                else:
+                    # SimpleActuatedPolicy
+                    actions[tid] = agent.select_action(
+                        obs_map[tid][:OBS_DIM],
+                        tid,
+                        sim_time,
+                    )
 
         info_map = self._env.apply_actions(actions, sim_time)
         rewards = self._env.compute_rewards()

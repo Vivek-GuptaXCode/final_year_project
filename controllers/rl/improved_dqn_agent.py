@@ -123,6 +123,11 @@ class ImprovedDQNAgent:
         self.loss_history: list[float] = []
         self.reward_history: list[float] = []
         self.q_value_history: list[float] = []
+        
+        # Pre-allocate inference buffers for speed (avoid repeated allocations)
+        self._inference_buffer_size = 128  # Max batch size for inference
+        self._h1_buffer = np.zeros((self._inference_buffer_size, h1), dtype=np.float32)
+        self._h2_buffer = np.zeros((self._inference_buffer_size, h2), dtype=np.float32)
 
     # ── Forward pass (3-layer) ─────────────────────────────────────────────
 
@@ -134,6 +139,7 @@ class ImprovedDQNAgent:
         W3: np.ndarray, b3: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Return (h1_pre, h1, h2_pre, h2, q) for a batch of states."""
+        # Use @ operator for matrix multiply (faster than np.dot)
         h1_pre = states @ W1 + b1      # (B, h1)
         h1 = _relu(h1_pre)             # (B, h1)
         h2_pre = h1 @ W2 + b2          # (B, h2)
@@ -141,11 +147,37 @@ class ImprovedDQNAgent:
         q = h2 @ W3 + b3               # (B, n_actions)
         return h1_pre, h1, h2_pre, h2, q
 
+    def _forward_fast(self, states: np.ndarray) -> np.ndarray:
+        """Optimized forward pass for inference only - returns Q-values directly."""
+        # Ensure contiguous memory layout for BLAS optimization
+        s = np.ascontiguousarray(states, dtype=np.float32)
+        # Fused forward pass without storing intermediates
+        h1 = np.maximum(0.0, s @ self.W1 + self.b1)
+        h2 = np.maximum(0.0, h1 @ self.W2 + self.b2)
+        return h2 @ self.W3 + self.b3
+
     def q_values(self, state: np.ndarray) -> np.ndarray:
         """Online Q-values for a single state (shape: (n_actions,))."""
         s = state.reshape(1, -1).astype(np.float32)
-        _, _, _, _, q = self._forward(s, self.W1, self.b1, self.W2, self.b2, self.W3, self.b3)
-        return q[0]
+        return self._forward_fast(s)[0]
+
+    def q_values_batch(self, states: np.ndarray) -> np.ndarray:
+        """Online Q-values for batch of states (N, obs_dim) -> (N, n_actions)."""
+        s = np.ascontiguousarray(states, dtype=np.float32)
+        if s.ndim == 1:
+            s = s.reshape(1, -1)
+        return self._forward_fast(s)
+
+    def select_actions_batch(self, states: np.ndarray, *, greedy: bool = False) -> np.ndarray:
+        """Select actions for batch of states - MUCH faster than per-junction calls."""
+        q = self.q_values_batch(states)
+        actions = np.argmax(q, axis=1)
+        if not greedy:
+            n = len(actions)
+            explore_mask = self._rng.random(n) < self.epsilon
+            random_actions = self._rng.integers(self.n_actions, size=n)
+            actions = np.where(explore_mask, random_actions, actions)
+        return actions.astype(np.int32)
 
     # ── Action selection ───────────────────────────────────────────────────
 

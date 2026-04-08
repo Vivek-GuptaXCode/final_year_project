@@ -1,0 +1,109 @@
+{
+  "train": {
+    "mae": 0.23533275723457336,
+    "rmse": 0.2783556282520294,
+    "mape": 169.67986822128296,
+    "accuracy": 0.9462719298245614,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "avg_loss": 0.07756183292716741,
+    "total_samples": 2736
+  },
+  "eval": {
+    "mae": 0.0,
+    "rmse": 0.0,
+    "mape": 0.0,
+    "accuracy": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "avg_loss": 0.0,
+    "total_samples": 0
+  },
+  "history": [
+    {
+      "step": 300,
+      "mae": 0.32477328181266785,
+      "rmse": 0.37737035751342773,
+      "mape": 912.139892578125,
+      "accuracy": 0.9824561403508771,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.14119557075202466,
+      "total_samples": 228
+    },
+    {
+      "step": 350,
+      "mae": 0.29783129692077637,
+      "rmse": 0.34517812728881836,
+      "mape": 810.8878135681152,
+      "accuracy": 0.9649122807017544,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.11820950735360385,
+      "total_samples": 684
+    },
+    {
+      "step": 400,
+      "mae": 0.26721835136413574,
+      "rmse": 0.3084540367126465,
+      "mape": 700.7356643676758,
+      "accuracy": 0.956140350877193,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.09445192342624069,
+      "total_samples": 1140
+    },
+    {
+      "step": 450,
+      "mae": 0.25931820273399353,
+      "rmse": 0.27819064259529114,
+      "mape": 675.7144927978516,
+      "accuracy": 0.9523809523809523,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.07676704064011573,
+      "total_samples": 1596
+    },
+    {
+      "step": 500,
+      "mae": 0.2078630030155182,
+      "rmse": 0.22863352298736572,
+      "mape": 369.0049648284912,
+      "accuracy": 0.9502923976608187,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.05220228858292103,
+      "total_samples": 2052
+    },
+    {
+      "step": 550,
+      "mae": 0.1813083440065384,
+      "rmse": 0.22298915684223175,
+      "mape": 220.47955989837646,
+      "accuracy": 0.9477671451355661,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "avg_loss": 0.0491823529265821,
+      "total_samples": 2508
+    }
+  ],
+  "config": {
+    "hidden_dim": 24,
+    "seq_length": 5,
+    "learning_rate": 0.01,
+    "num_nodes": 19
+  },
+  "training_stats": {
+    "total_steps": 12,
+    "buffer_size": 23,
+    "device": "cuda"
+  }
+}

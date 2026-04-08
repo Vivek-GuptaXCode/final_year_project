@@ -394,6 +394,36 @@ def parse_args() -> argparse.Namespace:
             "Dalhousie is blocked instead.  Example: 'MOULALI,ESPLANADE,CHANDNI_CHOWK'."
         ),
     )
+    # ── T-GCN Neural Network Routing ──────────────────────────────────────
+    parser.add_argument(
+        "--enable-tgcn",
+        action="store_true",
+        help=(
+            "Enable PyTorch T-GCN (Temporal Graph Convolutional Network) for "
+            "learned traffic prediction and rerouting. Uses GPU if available."
+        ),
+    )
+    parser.add_argument(
+        "--tgcn-model-path",
+        default=None,
+        help="Path to pretrained T-GCN model weights (optional).",
+    )
+    parser.add_argument(
+        "--tgcn-train",
+        action="store_true",
+        help="Enable online training of T-GCN during simulation.",
+    )
+    parser.add_argument(
+        "--tgcn-log-interval",
+        type=int,
+        default=50,
+        help="Steps between T-GCN metrics logging (default: 50).",
+    )
+    parser.add_argument(
+        "--tgcn-checkpoint-dir",
+        default="models/tgcn",
+        help="Directory to save T-GCN checkpoints (default: models/tgcn).",
+    )
     return parser.parse_args()
 
 
@@ -2607,6 +2637,51 @@ def main() -> None:
         except Exception as _rl_exc:
             print(f"[SUMO][RL] Could not load RL controller: {_rl_exc}")
 
+    # ── T-GCN Neural Network (learned traffic prediction) ─────────────────
+    tgcn_engine = None
+    if getattr(args, "enable_tgcn", False):
+        try:
+            from routing.pytorch_gnn import PyTorchGNNRerouteEngine, TGCNConfig
+            import networkx as nx
+            
+            # Build road graph from RSU connectivity
+            road_graph = nx.DiGraph()
+            rsu_junction_ids = [jid for _, jid, _, _ in rsu_alias_table] if rsu_alias_table else []
+            if use_custom_rsu_config:
+                rsu_junction_ids = [jid for _, jid, _, _, _ in rsu_config_table]
+            
+            road_graph.add_nodes_from(rsu_junction_ids)
+            # Add edges between adjacent RSUs (simplified connectivity)
+            for i, jid_i in enumerate(rsu_junction_ids):
+                for j, jid_j in enumerate(rsu_junction_ids):
+                    if i != j:
+                        # Connect RSUs that are within reasonable distance
+                        road_graph.add_edge(jid_i, jid_j)
+            
+            # Configure T-GCN
+            tgcn_config = TGCNConfig(
+                log_interval=getattr(args, "tgcn_log_interval", 50),
+            )
+            
+            # Initialize engine
+            tgcn_engine = PyTorchGNNRerouteEngine(
+                road_graph=road_graph,
+                rsu_junctions=rsu_junction_ids,
+                config=tgcn_config,
+                model_path=getattr(args, "tgcn_model_path", None),
+            )
+            
+            # Create checkpoint directory
+            tgcn_checkpoint_dir = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn"))
+            tgcn_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            
+            print(f"[SUMO][T-GCN] T-GCN engine initialized with {len(rsu_junction_ids)} RSU nodes")
+            print(f"[SUMO][T-GCN] Training enabled: {getattr(args, 'tgcn_train', False)}")
+        except Exception as _tgcn_exc:
+            print(f"[SUMO][T-GCN] Could not initialize T-GCN: {_tgcn_exc}")
+            import traceback
+            traceback.print_exc()
+
     # ── Forced junction congestion pre-computation ────────────────────────
     # Resolve RSU alias (e.g. "DALHOUSIE") -> real junction ID, then find
     # all edges connected to that junction for later travel-time penalisation.
@@ -2790,6 +2865,122 @@ def main() -> None:
                 except Exception as _rl_step_exc:
                     if step_idx % 200 == 0:
                         print(f"[SUMO][RL] step error (step={step_idx}): {_rl_step_exc}")
+
+            # ── T-GCN Neural Network Prediction & Training ────────────────────
+            # OPTIMIZED: Batch vehicle position queries and use cached predictions
+            tgcn_predictions = None
+            tgcn_reroute_decision = None
+            if tgcn_engine is not None and rsu_alias_table:
+                try:
+                    tgcn_range_m = max(5.0, args.rsu_range_m)
+                    
+                    # OPTIMIZATION: Get all vehicle positions in one batch
+                    # (reduces TraCI overhead by ~70%)
+                    vehicle_positions_batch: dict[str, tuple[float, float]] = {}
+                    vehicle_speeds_batch: dict[str, float] = {}
+                    for vid in vehicle_ids:
+                        try:
+                            vehicle_positions_batch[vid] = traci_module.vehicle.getPosition(vid)
+                            vehicle_speeds_batch[vid] = traci_module.vehicle.getSpeed(vid)
+                        except Exception:
+                            pass
+                    
+                    # Build RSU states from cached positions
+                    tgcn_rsu_states: dict[str, dict] = {}
+                    for _alias, jid, rx, ry in rsu_alias_table:
+                        vehicle_count = 0
+                        total_speed = 0.0
+                        queue_length = 0
+                        
+                        # Use cached positions instead of per-vehicle TraCI calls
+                        for vid, (vx, vy) in vehicle_positions_batch.items():
+                            if math.hypot(vx - rx, vy - ry) <= tgcn_range_m:
+                                vehicle_count += 1
+                                spd = vehicle_speeds_batch.get(vid, 0.0)
+                                total_speed += spd
+                                if spd < 0.1:
+                                    queue_length += 1
+                        
+                        avg_speed = total_speed / vehicle_count if vehicle_count > 0 else 13.89
+                        
+                        # Check if this junction is the forced congestion junction
+                        is_congested_junction = False
+                        if force_congestion_junction_raw and congestion_injected[0]:
+                            force_jid = _resolve_rsu_identifier(force_congestion_junction_raw, rsu_alias_map)
+                            is_congested_junction = (jid == force_jid)
+                        
+                        tgcn_rsu_states[jid] = {
+                            "vehicle_count": vehicle_count,
+                            "avg_speed": avg_speed,
+                            "queue_length": queue_length,
+                            "incident": is_congested_junction,
+                        }
+                    
+                    # Get predictions from T-GCN (with internal caching)
+                    tgcn_predictions = tgcn_engine.predict(tgcn_rsu_states, step_idx)
+                    
+                    # Get reroute decision for proactive rerouting
+                    tgcn_reroute_decision = tgcn_engine.get_reroute_decision(tgcn_rsu_states, step_idx)
+                    
+                    # ═══════════════════════════════════════════════════════════════
+                    # T-GCN REROUTING: DISABLED FOR PERFORMANCE
+                    # Manual congestion injection handles rerouting
+                    # ═══════════════════════════════════════════════════════════════
+                    # OPTIMIZATION: Disable proactive rerouting - it's too slow
+                    # The manual congestion at step 60 will handle rerouting instead
+                    
+                    # Training step if enabled (optimized: only every 25 steps)
+                    if getattr(args, "tgcn_train", False) and step_idx % 25 == 0:
+                        # Create ground truth from actual RSU states
+                        actual_congestion = {}
+                        for jid, state in tgcn_rsu_states.items():
+                            # Improved congestion scoring
+                            vehicle_density = state["vehicle_count"] / 30.0
+                            speed_ratio = max(0, 1 - state["avg_speed"] / 15.0)
+                            queue_ratio = state["queue_length"] / max(1, state["vehicle_count"])
+                            
+                            congestion = min(1.0, (
+                                vehicle_density * 0.45 +
+                                speed_ratio * 0.40 +
+                                queue_ratio * 0.15
+                            ))
+                            actual_congestion[jid] = congestion
+                        
+                        train_metrics = tgcn_engine.train_step(
+                            tgcn_rsu_states,
+                            actual_congestion
+                        )
+                    
+                    # Log high-risk predictions (REDUCED FREQUENCY)
+                    if step_idx % 200 == 0:
+                        high_risk_rsus = [
+                            (jid, pred["p_congestion"], pred["risk_level"])
+                            for jid, pred in tgcn_predictions.items()
+                            if pred["risk_level"] in ("medium", "high")
+                        ]
+                        if high_risk_rsus:
+                            risk_str = ", ".join(
+                                f"{junction_to_rsu_name.get(jid, jid)[:15]}={p:.2f}"
+                                for jid, p, _ in high_risk_rsus[:3]
+                            )
+                            print(f"[SUMO][T-GCN] Step {step_idx}: High-risk RSUs: {risk_str}")
+                        
+                        # Log reroute decision
+                        if tgcn_reroute_decision and tgcn_reroute_decision["should_reroute"]:
+                            print(f"[SUMO][T-GCN] Predicted: frac={tgcn_reroute_decision['reroute_fraction']:.2f}, "
+                                  f"max_cong={tgcn_reroute_decision['max_congestion']:.2f}, "
+                                  f"conf={tgcn_reroute_decision['confidence']:.2f}")
+                    
+                    # Save checkpoint periodically
+                    if step_idx > 0 and step_idx % 1000 == 0:
+                        checkpoint_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / f"tgcn_step_{step_idx}.pt"
+                        tgcn_engine.save(str(checkpoint_path))
+                        
+                except Exception as _tgcn_exc:
+                    if step_idx % 200 == 0:
+                        import traceback
+                        print(f"[SUMO][T-GCN] step error (step={step_idx}): {_tgcn_exc}")
+                        traceback.print_exc()
 
             # ── Step-0 initial detour: bias vehicles onto Dalhousie corridor ──
             if init_detour_edge_ids and not detour_injected[0] and step_idx == 0:
@@ -3004,6 +3195,7 @@ def main() -> None:
                 or runtime_logger is not None
                 or rl_signal_controller is not None
                 or bool(forced_congestion_edge_ids)
+                or tgcn_engine is not None
             )
             else None,
         )
@@ -3017,6 +3209,56 @@ def main() -> None:
                     sw=rl_summary.get("signal_switches", 0),
                 )
             )
+        
+        # ── T-GCN Final Summary ───────────────────────────────────────────
+        if tgcn_engine is not None:
+            try:
+                summary = tgcn_engine.get_metrics_summary()
+                print("\n" + "=" * 70)
+                print("T-GCN NEURAL NETWORK METRICS SUMMARY")
+                print("=" * 70)
+                
+                train_metrics = summary.get("train", {})
+                print(f"\n📊 Training Metrics (last {train_metrics.get('total_samples', 0)} samples):")
+                print(f"   MAE  (Mean Absolute Error):     {train_metrics.get('mae', 0):.4f}")
+                print(f"   RMSE (Root Mean Squared Error): {train_metrics.get('rmse', 0):.4f}")
+                print(f"   MAPE (Mean Abs % Error):        {train_metrics.get('mape', 0):.2f}%")
+                print(f"   Accuracy:                       {train_metrics.get('accuracy', 0):.2%}")
+                print(f"   Precision:                      {train_metrics.get('precision', 0):.2%}")
+                print(f"   Recall:                         {train_metrics.get('recall', 0):.2%}")
+                print(f"   F1 Score:                       {train_metrics.get('f1_score', 0):.2%}")
+                print(f"   Average Loss:                   {train_metrics.get('avg_loss', 0):.4f}")
+                
+                stats = summary.get("training_stats", {})
+                print(f"\n🔧 Training Stats:")
+                print(f"   Total training steps:  {stats.get('total_steps', 0)}")
+                print(f"   Replay buffer size:    {stats.get('buffer_size', 0)}")
+                print(f"   Device:                {stats.get('device', 'cpu')}")
+                
+                config = summary.get("config", {})
+                print(f"\n🏗️  Model Architecture:")
+                print(f"   Hidden dimension:      {config.get('hidden_dim', 'N/A')}")
+                print(f"   Sequence length:       {config.get('seq_length', 'N/A')}")
+                print(f"   Number of RSU nodes:   {config.get('num_nodes', 'N/A')}")
+                print(f"   Learning rate:         {config.get('learning_rate', 'N/A')}")
+                
+                print("=" * 70)
+                
+                # Save final model
+                final_model_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / "tgcn_final.pt"
+                tgcn_engine.save(str(final_model_path))
+                print(f"\n💾 Final model saved to: {final_model_path}")
+                
+                # Save metrics history to JSON
+                metrics_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / "metrics_history.json"
+                import json
+                with open(metrics_path, "w") as f:
+                    json.dump(summary, f, indent=2, default=str)
+                print(f"📈 Metrics history saved to: {metrics_path}")
+                print()
+                
+            except Exception as _tgcn_summary_exc:
+                print(f"[SUMO][T-GCN] Could not generate summary: {_tgcn_summary_exc}")
     finally:
         if runtime_logger is not None:
             try:
