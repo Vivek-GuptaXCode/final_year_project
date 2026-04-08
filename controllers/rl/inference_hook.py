@@ -13,7 +13,7 @@ Usage in run_sumo_pipeline.py _on_step():
 The controller:
   1. Discovers controllable TLS junctions on first call.
   2. Loads pre-trained DQN weights if a model path is provided; otherwise
-     falls back to SimpleActuatedPolicy (reasonable default with no training).
+     falls back to MaxPressurePolicy (research-backed default with no training).
   3. Applies SafetyGuardrail-filtered actions to each junction every call.
   4. Emits diagnostic logs at configurable intervals.
 """
@@ -27,19 +27,20 @@ import numpy as np
 
 from controllers.rl.dqn_agent import DQNAgent
 from controllers.rl.improved_dqn_agent import ImprovedDQNAgent
-from controllers.rl.baselines import SimpleActuatedPolicy
-from controllers.rl.safety_guardrails import GuardrailConfig, TLSSafetyGuardrail
+from controllers.rl.baselines import MaxPressurePolicy
+from controllers.rl.safety_guardrails import GuardrailConfig
 from controllers.rl.traffic_signal_env import (
-    MAX_PHASES,
-    MAX_LANES,
-    OBS_DIM,
     EnvConfig,
+    LOCAL_PRESSURE_IDX,
     MultiJunctionEnv,
-    TrafficSignalEnv,
+    OBS_DIM,
+    QUEUE_END_IDX,
+    QUEUE_START_IDX,
+    align_observation_dim,
 )
 
 
-RLPolicy = DQNAgent | ImprovedDQNAgent | SimpleActuatedPolicy
+RLPolicy = DQNAgent | ImprovedDQNAgent | MaxPressurePolicy
 
 
 class RLSignalController:
@@ -51,7 +52,7 @@ class RLSignalController:
     tls_ids        : Explicit list of junction IDs to control. If empty,
                      auto-discovers all TLS junctions at first step.
     model_dir      : Path to DQN weights directory produced by train_phase4.py.
-                     If None or path does not exist, falls back to SimpleActuated.
+                     If None or path does not exist, falls back to MaxPressure.
     guardrail_cfg  : Safety guardrail configuration.
     log_interval   : Print diagnostics every N sim steps.
     neighbour_k    : Neighbours each agent sees for MARL coordination.
@@ -67,7 +68,7 @@ class RLSignalController:
         log_interval: int = 100,
         neighbour_k: int = 2,
         max_controlled_tls: int = 96,
-        step_interval_steps: int = 2,
+        step_interval_steps: int = 5,
     ) -> None:
         self._traci = traci_module
         self._tls_ids_override = tls_ids or []
@@ -85,7 +86,7 @@ class RLSignalController:
         self._decision_steps = 0
         self._total_switches = 0
         self._cumulative_reward: dict[str, float] = {}
-        
+
         # Action caching for performance (skip inference if obs unchanged)
         self._cached_actions: dict[str, int] = {}
         self._cached_obs: dict[str, np.ndarray] = {}
@@ -176,22 +177,21 @@ class RLSignalController:
 
         # Load agents
         use_saved_model = self._model_dir is not None and (self._model_dir / "latest" / "weights.npz").exists()
-        loaded_agent_name = "SimpleActuated"
+        loaded_agent_name = "MaxPressure"
+        shared_agent: DQNAgent | ImprovedDQNAgent | None = None
+        if use_saved_model:
+            try:
+                shared_agent = self._load_saved_agent()
+                shared_agent.epsilon = 0.0
+                loaded_agent_name = type(shared_agent).__name__
+            except Exception as exc:
+                print(f"[RL] Failed to load RL weights: {exc} — using MaxPressure fallback")
+                shared_agent = None
 
         for tid in tls_ids:
-            if use_saved_model:
-                try:
-                    agent = self._load_saved_agent()
-                    agent.epsilon = 0.0  # pure greedy in inference
-                    self._agents[tid] = agent
-                    loaded_agent_name = type(agent).__name__
-                except Exception as exc:
-                    print(f"[RL] Failed to load RL weights for {tid}: {exc} — using SimpleActuated fallback")
-                    self._agents[tid] = SimpleActuatedPolicy()
-            else:
-                self._agents[tid] = SimpleActuatedPolicy()
+            self._agents[tid] = shared_agent if shared_agent is not None else MaxPressurePolicy()
 
-        policy_name = loaded_agent_name if use_saved_model else "SimpleActuated(fallback)"
+        policy_name = loaded_agent_name if use_saved_model else "MaxPressure(fallback)"
         print(f"[RL] Policy: {policy_name}")
         self._cumulative_reward = {tid: 0.0 for tid in tls_ids}
         self._initialized = True
@@ -223,64 +223,49 @@ class RLSignalController:
         tls_ids = self._env.tls_ids
 
         actions: dict[str, int] = {}
-        
-        # Check if we can use batch inference (shared agent with batch support)
+
         first_agent = self._agents.get(tls_ids[0]) if tls_ids else None
         use_batch = (
-            first_agent is not None 
+            first_agent is not None
             and isinstance(first_agent, ImprovedDQNAgent)
-            and hasattr(first_agent, 'select_actions_batch')
+            and hasattr(first_agent, "select_actions_batch")
         )
-        
+
         if use_batch:
-            # Batch inference with caching - skip junctions with unchanged obs
             agent = first_agent
             obs_list = []
             batch_tids = []
-            
+
             for tid in tls_ids:
-                obs = obs_map[tid]
-                if obs.shape[0] == OBS_DIM + 1:
-                    obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
-                else:
-                    obs_input = obs
-                
-                # Check cache - use cached action if observation hasn't changed much
+                obs_input = align_observation_dim(obs_map[tid], int(agent.obs_dim))
+
                 cached_obs = self._cached_obs.get(tid)
                 if cached_obs is not None and tid in self._cached_actions:
                     obs_diff = np.abs(obs_input - cached_obs).mean()
                     if obs_diff < self._cache_threshold:
                         actions[tid] = self._cached_actions[tid]
                         continue
-                
+
                 obs_list.append(obs_input)
                 batch_tids.append(tid)
-            
-            # Only infer for junctions that need updates
+
             if obs_list:
                 obs_batch = np.ascontiguousarray(np.stack(obs_list, axis=0), dtype=np.float32)
                 batch_actions = agent.select_actions_batch(obs_batch, greedy=True)
                 for i, tid in enumerate(batch_tids):
                     action = int(batch_actions[i])
                     actions[tid] = action
-                    # Update cache
                     self._cached_actions[tid] = action
                     self._cached_obs[tid] = obs_list[i].copy()
         else:
-            # Fallback: per-junction inference
             for tid in tls_ids:
                 agent = self._agents.get(tid)
                 if agent is None:
                     actions[tid] = 0
                 elif isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
-                    obs = obs_map[tid]
-                    if obs.shape[0] == OBS_DIM + 1:
-                        obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
-                    else:
-                        obs_input = obs
+                    obs_input = align_observation_dim(obs_map[tid], int(agent.obs_dim))
                     actions[tid] = agent.select_action(obs_input, greedy=True)
                 else:
-                    # SimpleActuatedPolicy
                     actions[tid] = agent.select_action(
                         obs_map[tid][:OBS_DIM],
                         tid,
@@ -298,13 +283,17 @@ class RLSignalController:
         self._decision_steps += 1
 
         if self._decision_steps % self._log_interval == 0:
-            total_halt = sum(
-                float(np.mean(obs_map[tid][MAX_PHASES + 1 : MAX_PHASES + 1 + MAX_LANES]))
+            total_queue = sum(
+                float(np.mean(obs_map[tid][QUEUE_START_IDX:QUEUE_END_IDX]))
                 for tid in tls_ids
             )
+            mean_pressure = float(
+                np.mean([float(obs_map[tid][LOCAL_PRESSURE_IDX]) for tid in tls_ids])
+            ) if tls_ids else 0.0
             print(
                 f"[RL] step={self._step_count} decisions={self._decision_steps} junctions={len(tls_ids)} "
-                f"mean_halting_norm={total_halt/max(1,len(tls_ids)):.3f} "
+                f"mean_queue_norm={total_queue/max(1,len(tls_ids)):.3f} "
+                f"mean_pressure={mean_pressure:.3f} "
                 f"switches={step_switches}"
             )
 
@@ -333,7 +322,7 @@ class RLSignalController:
         yellow_dur = getattr(args, "rl_yellow_duration_seconds", 3.0)
         max_switches = getattr(args, "rl_max_switches_per_window", 4)
         max_controlled_tls = getattr(args, "rl_max_controlled_tls", 96)
-        step_interval_steps = getattr(args, "rl_step_interval_steps", 2)
+        step_interval_steps = getattr(args, "rl_step_interval_steps", 5)
 
         guardrail_cfg = GuardrailConfig(
             min_green_seconds=float(min_green),

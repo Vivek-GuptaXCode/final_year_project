@@ -85,10 +85,11 @@ python3 -u sumo/run_sumo_pipeline.py \
     --route-timeout-seconds 1.5 \
     \
     --enable-rl-signal-control \
-    --rl-model-dir        models/rl/artifacts \
+    --rl-model-dir        models/rl/artifacts/research_backed_kolkata_reference_v2 \
     --rl-min-green-seconds 15 \
     --rl-yellow-duration-seconds 3 \
     --rl-max-controlled-tls 96 \
+    --rl-step-interval-steps 5 \
     \
     --enable-runtime-logging \
     --runtime-log-root    data/raw \

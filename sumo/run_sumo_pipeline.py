@@ -322,7 +322,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Enable Phase-4 RL adaptive traffic signal control. "
             "Uses pre-trained DQN weights if --rl-model-dir is set, "
-            "otherwise falls back to SimpleActuated policy."
+            "otherwise falls back to MaxPressure policy."
         ),
     )
     parser.add_argument(
@@ -365,8 +365,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rl-step-interval-steps",
         type=int,
-        default=2,
-        help="Compute/apply RL signal actions every N simulation steps (default: 2).",
+        default=5,
+        help="Compute/apply RL signal actions every N simulation steps (default: 5).",
     )
     parser.add_argument(
         "--force-congestion-at-junction",
@@ -2643,13 +2643,13 @@ def main() -> None:
         try:
             from routing.pytorch_gnn import PyTorchGNNRerouteEngine, TGCNConfig
             import networkx as nx
-            
+
             # Build road graph from RSU connectivity
             road_graph = nx.DiGraph()
             rsu_junction_ids = [jid for _, jid, _, _ in rsu_alias_table] if rsu_alias_table else []
             if use_custom_rsu_config:
                 rsu_junction_ids = [jid for _, jid, _, _, _ in rsu_config_table]
-            
+
             road_graph.add_nodes_from(rsu_junction_ids)
             # Add edges between adjacent RSUs (simplified connectivity)
             for i, jid_i in enumerate(rsu_junction_ids):
@@ -2657,12 +2657,12 @@ def main() -> None:
                     if i != j:
                         # Connect RSUs that are within reasonable distance
                         road_graph.add_edge(jid_i, jid_j)
-            
+
             # Configure T-GCN
             tgcn_config = TGCNConfig(
                 log_interval=getattr(args, "tgcn_log_interval", 50),
             )
-            
+
             # Initialize engine
             tgcn_engine = PyTorchGNNRerouteEngine(
                 road_graph=road_graph,
@@ -2670,11 +2670,11 @@ def main() -> None:
                 config=tgcn_config,
                 model_path=getattr(args, "tgcn_model_path", None),
             )
-            
+
             # Create checkpoint directory
             tgcn_checkpoint_dir = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn"))
             tgcn_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            
+
             print(f"[SUMO][T-GCN] T-GCN engine initialized with {len(rsu_junction_ids)} RSU nodes")
             print(f"[SUMO][T-GCN] Training enabled: {getattr(args, 'tgcn_train', False)}")
         except Exception as _tgcn_exc:
@@ -2873,7 +2873,7 @@ def main() -> None:
             if tgcn_engine is not None and rsu_alias_table:
                 try:
                     tgcn_range_m = max(5.0, args.rsu_range_m)
-                    
+
                     # OPTIMIZATION: Get all vehicle positions in one batch
                     # (reduces TraCI overhead by ~70%)
                     vehicle_positions_batch: dict[str, tuple[float, float]] = {}
@@ -2884,14 +2884,14 @@ def main() -> None:
                             vehicle_speeds_batch[vid] = traci_module.vehicle.getSpeed(vid)
                         except Exception:
                             pass
-                    
+
                     # Build RSU states from cached positions
                     tgcn_rsu_states: dict[str, dict] = {}
                     for _alias, jid, rx, ry in rsu_alias_table:
                         vehicle_count = 0
                         total_speed = 0.0
                         queue_length = 0
-                        
+
                         # Use cached positions instead of per-vehicle TraCI calls
                         for vid, (vx, vy) in vehicle_positions_batch.items():
                             if math.hypot(vx - rx, vy - ry) <= tgcn_range_m:
@@ -2900,35 +2900,35 @@ def main() -> None:
                                 total_speed += spd
                                 if spd < 0.1:
                                     queue_length += 1
-                        
+
                         avg_speed = total_speed / vehicle_count if vehicle_count > 0 else 13.89
-                        
+
                         # Check if this junction is the forced congestion junction
                         is_congested_junction = False
                         if force_congestion_junction_raw and congestion_injected[0]:
                             force_jid = _resolve_rsu_identifier(force_congestion_junction_raw, rsu_alias_map)
                             is_congested_junction = (jid == force_jid)
-                        
+
                         tgcn_rsu_states[jid] = {
                             "vehicle_count": vehicle_count,
                             "avg_speed": avg_speed,
                             "queue_length": queue_length,
                             "incident": is_congested_junction,
                         }
-                    
+
                     # Get predictions from T-GCN (with internal caching)
                     tgcn_predictions = tgcn_engine.predict(tgcn_rsu_states, step_idx)
-                    
+
                     # Get reroute decision for proactive rerouting
                     tgcn_reroute_decision = tgcn_engine.get_reroute_decision(tgcn_rsu_states, step_idx)
-                    
+
                     # ═══════════════════════════════════════════════════════════════
                     # T-GCN REROUTING: DISABLED FOR PERFORMANCE
                     # Manual congestion injection handles rerouting
                     # ═══════════════════════════════════════════════════════════════
                     # OPTIMIZATION: Disable proactive rerouting - it's too slow
                     # The manual congestion at step 60 will handle rerouting instead
-                    
+
                     # Training step if enabled (optimized: only every 25 steps)
                     if getattr(args, "tgcn_train", False) and step_idx % 25 == 0:
                         # Create ground truth from actual RSU states
@@ -2938,19 +2938,19 @@ def main() -> None:
                             vehicle_density = state["vehicle_count"] / 30.0
                             speed_ratio = max(0, 1 - state["avg_speed"] / 15.0)
                             queue_ratio = state["queue_length"] / max(1, state["vehicle_count"])
-                            
+
                             congestion = min(1.0, (
                                 vehicle_density * 0.45 +
                                 speed_ratio * 0.40 +
                                 queue_ratio * 0.15
                             ))
                             actual_congestion[jid] = congestion
-                        
+
                         train_metrics = tgcn_engine.train_step(
                             tgcn_rsu_states,
                             actual_congestion
                         )
-                    
+
                     # Log high-risk predictions (REDUCED FREQUENCY)
                     if step_idx % 200 == 0:
                         high_risk_rsus = [
@@ -2964,18 +2964,18 @@ def main() -> None:
                                 for jid, p, _ in high_risk_rsus[:3]
                             )
                             print(f"[SUMO][T-GCN] Step {step_idx}: High-risk RSUs: {risk_str}")
-                        
+
                         # Log reroute decision
                         if tgcn_reroute_decision and tgcn_reroute_decision["should_reroute"]:
                             print(f"[SUMO][T-GCN] Predicted: frac={tgcn_reroute_decision['reroute_fraction']:.2f}, "
                                   f"max_cong={tgcn_reroute_decision['max_congestion']:.2f}, "
                                   f"conf={tgcn_reroute_decision['confidence']:.2f}")
-                    
+
                     # Save checkpoint periodically
                     if step_idx > 0 and step_idx % 1000 == 0:
                         checkpoint_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / f"tgcn_step_{step_idx}.pt"
                         tgcn_engine.save(str(checkpoint_path))
-                        
+
                 except Exception as _tgcn_exc:
                     if step_idx % 200 == 0:
                         import traceback
@@ -3209,7 +3209,7 @@ def main() -> None:
                     sw=rl_summary.get("signal_switches", 0),
                 )
             )
-        
+
         # ── T-GCN Final Summary ───────────────────────────────────────────
         if tgcn_engine is not None:
             try:
@@ -3217,7 +3217,7 @@ def main() -> None:
                 print("\n" + "=" * 70)
                 print("T-GCN NEURAL NETWORK METRICS SUMMARY")
                 print("=" * 70)
-                
+
                 train_metrics = summary.get("train", {})
                 print(f"\n📊 Training Metrics (last {train_metrics.get('total_samples', 0)} samples):")
                 print(f"   MAE  (Mean Absolute Error):     {train_metrics.get('mae', 0):.4f}")
@@ -3228,27 +3228,27 @@ def main() -> None:
                 print(f"   Recall:                         {train_metrics.get('recall', 0):.2%}")
                 print(f"   F1 Score:                       {train_metrics.get('f1_score', 0):.2%}")
                 print(f"   Average Loss:                   {train_metrics.get('avg_loss', 0):.4f}")
-                
+
                 stats = summary.get("training_stats", {})
                 print(f"\n🔧 Training Stats:")
                 print(f"   Total training steps:  {stats.get('total_steps', 0)}")
                 print(f"   Replay buffer size:    {stats.get('buffer_size', 0)}")
                 print(f"   Device:                {stats.get('device', 'cpu')}")
-                
+
                 config = summary.get("config", {})
                 print(f"\n🏗️  Model Architecture:")
                 print(f"   Hidden dimension:      {config.get('hidden_dim', 'N/A')}")
                 print(f"   Sequence length:       {config.get('seq_length', 'N/A')}")
                 print(f"   Number of RSU nodes:   {config.get('num_nodes', 'N/A')}")
                 print(f"   Learning rate:         {config.get('learning_rate', 'N/A')}")
-                
+
                 print("=" * 70)
-                
+
                 # Save final model
                 final_model_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / "tgcn_final.pt"
                 tgcn_engine.save(str(final_model_path))
                 print(f"\n💾 Final model saved to: {final_model_path}")
-                
+
                 # Save metrics history to JSON
                 metrics_path = Path(getattr(args, "tgcn_checkpoint_dir", "models/tgcn")) / "metrics_history.json"
                 import json
@@ -3256,7 +3256,7 @@ def main() -> None:
                     json.dump(summary, f, indent=2, default=str)
                 print(f"📈 Metrics history saved to: {metrics_path}")
                 print()
-                
+
             except Exception as _tgcn_summary_exc:
                 print(f"[SUMO][T-GCN] Could not generate summary: {_tgcn_summary_exc}")
     finally:

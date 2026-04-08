@@ -19,6 +19,14 @@ models/forecast/artifacts/*/model.pkl
 models/forecast/artifacts/*/model.json
 models/forecast/artifacts/*/model.pt
 models/forecast/artifacts/*/scaler.pkl
+models/rl/artifacts/*_seed*/
+models/rl/artifacts/ablation_smoke_check/
+models/rl/artifacts/reference_smoke_probe/
+models/rl/artifacts/research_backed_demo_v1/
+models/rl/artifacts/research_backed_kolkata_reference_v2/
+models/rl/artifacts/research_backed_kolkata_v1/
+models/rl/artifacts/research_backed_smoke/
+models/rl/artifacts/rl_ablation/
 
 # SUMO generated files
 trips.trips.xml
@@ -59,3 +67,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Evaluation outputs from local RL experiments / ablations
+evaluation/phase4_kpi_results_*.json
+evaluation/rl_ablation_city_v*/

@@ -17,6 +17,16 @@ from typing import Any
 
 import numpy as np
 
+from controllers.rl.traffic_signal_env import (
+    CURRENT_PHASE_QUEUE_IDX,
+    MAX_LANES,
+    MAX_PHASES,
+    NEXT_PHASE_QUEUE_IDX,
+    PHASE_ELAPSED_IDX,
+    QUEUE_END_IDX,
+    QUEUE_START_IDX,
+)
+
 
 @dataclass
 class FixedTimePolicy:
@@ -75,9 +85,8 @@ class SimpleActuatedPolicy:
 
     The observation vector must follow the TrafficSignalEnv format:
         obs[0:MAX_PHASES]                  — phase one-hot
-        obs[MAX_PHASES]                    — phase elapsed (normalised 0-1, scale=120 s)
-        obs[MAX_PHASES+1 : MAX_PHASES+1+L] — halting counts (normalised, scale=20 veh/lane)
-        obs[-1]                            — emergency flag
+        obs[PHASE_ELAPSED_IDX]             — phase elapsed (normalised 0-1, scale=120 s)
+        obs[QUEUE_START_IDX:QUEUE_END_IDX] — lane queue densities
     """
 
     min_green_seconds: float = 15.0
@@ -85,8 +94,8 @@ class SimpleActuatedPolicy:
     extend_threshold: float = 0.30
     switch_threshold: float = 0.20
     # Constants matching TrafficSignalEnv defaults
-    max_phases: int = 8
-    max_lanes: int = 16
+    max_phases: int = MAX_PHASES
+    max_lanes: int = MAX_LANES
     elapsed_scale_seconds: float = 120.0
 
     def select_action(
@@ -100,11 +109,8 @@ class SimpleActuatedPolicy:
         # Decode observation
         phase_onehot = obs[: self.max_phases]
         current_phase = int(np.argmax(phase_onehot))
-        elapsed_s = float(obs[self.max_phases]) * self.elapsed_scale_seconds
-
-        halt_start = self.max_phases + 1
-        halt_end = halt_start + self.max_lanes
-        halting = obs[halt_start:halt_end]  # normalised (0-1, scale 20 veh)
+        elapsed_s = float(obs[PHASE_ELAPSED_IDX]) * self.elapsed_scale_seconds
+        halting = obs[QUEUE_START_IDX:QUEUE_END_IDX]
 
         effective_n = n_phases if n_phases is not None else self.max_phases
         lanes_per_phase = max(1, self.max_lanes // max(1, effective_n))
@@ -135,10 +141,77 @@ class SimpleActuatedPolicy:
         pass  # stateless per call
 
 
-def make_baseline(name: str, **kwargs: Any) -> FixedTimePolicy | SimpleActuatedPolicy:
+@dataclass
+class MaxPressurePolicy:
+    """Binary max-pressure-style baseline for current-vs-next phase control.
+
+    This adapts max-pressure intuition to the repo's binary action space:
+    keep the current phase unless the next phase queue clearly dominates.
+    """
+
+    min_green_seconds: float = 15.0
+    max_green_seconds: float = 90.0
+    switch_margin: float = 0.03
+    max_phases: int = MAX_PHASES
+    max_lanes: int = MAX_LANES
+    elapsed_scale_seconds: float = 120.0
+
+    def _phase_queue_pair(
+        self,
+        obs: np.ndarray,
+        current_phase: int,
+        effective_n: int,
+    ) -> tuple[float, float]:
+        if obs.shape[0] > NEXT_PHASE_QUEUE_IDX:
+            return float(obs[CURRENT_PHASE_QUEUE_IDX]), float(obs[NEXT_PHASE_QUEUE_IDX])
+
+        halting = obs[QUEUE_START_IDX:QUEUE_END_IDX]
+        lanes_per_phase = max(1, self.max_lanes // max(1, effective_n))
+        next_phase = (current_phase + 1) % effective_n
+
+        current_start = current_phase * lanes_per_phase
+        current_end = current_start + lanes_per_phase
+        next_start = next_phase * lanes_per_phase
+        next_end = next_start + lanes_per_phase
+
+        current_queue = float(np.mean(halting[current_start:current_end]))
+        next_queue = float(np.mean(halting[next_start:next_end]))
+        return current_queue, next_queue
+
+    def select_action(
+        self,
+        obs: np.ndarray,
+        tls_id: str,
+        sim_time: float,
+        *,
+        n_phases: int | None = None,
+    ) -> int:
+        phase_onehot = obs[: self.max_phases]
+        current_phase = int(np.argmax(phase_onehot))
+        elapsed_s = float(obs[PHASE_ELAPSED_IDX]) * self.elapsed_scale_seconds
+        effective_n = max(1, min(self.max_phases, n_phases if n_phases is not None else self.max_phases))
+        current_queue, next_queue = self._phase_queue_pair(obs, current_phase, effective_n)
+
+        if elapsed_s < self.min_green_seconds:
+            return 0
+        if next_queue > current_queue + self.switch_margin:
+            return 1
+        if elapsed_s >= self.max_green_seconds and next_queue > 0.01:
+            return 1
+        return 0
+
+    def reset(self, tls_id: str, sim_time: float) -> None:  # noqa: ARG002
+        pass
+
+
+def make_baseline(name: str, **kwargs: Any) -> FixedTimePolicy | SimpleActuatedPolicy | MaxPressurePolicy:
     """Factory for named baselines used in train_phase4.py evaluations."""
     if name == "fixed_time":
         return FixedTimePolicy(**kwargs)
     if name == "simple_actuated":
         return SimpleActuatedPolicy(**kwargs)
-    raise ValueError(f"Unknown baseline: {name!r}. Choose 'fixed_time' or 'simple_actuated'.")
+    if name == "max_pressure":
+        return MaxPressurePolicy(**kwargs)
+    raise ValueError(
+        f"Unknown baseline: {name!r}. Choose 'fixed_time', 'simple_actuated', or 'max_pressure'."
+    )

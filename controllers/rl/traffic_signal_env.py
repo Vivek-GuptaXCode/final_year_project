@@ -4,15 +4,21 @@ This module defines TrafficSignalEnv — a per-junction RL environment that
 wraps SUMO's TraCI interface with a standard (obs, reward, done, info) API,
 no gymnasium package required.
 
-Observation vector (fixed length = OBS_DIM = 42)
+Observation vector (fixed length = OBS_DIM = 46)
 -------------------------------------------------
   [0 : MAX_PHASES]              — current phase one-hot (8 dims)
-  [MAX_PHASES]                  — phase elapsed normalised (÷ 120 s)
-  [MAX_PHASES+1 : +MAX_LANES]   — per-lane halting count normalised (÷ 20 veh)
-  [+MAX_LANES : +2*MAX_LANES]   — per-lane occupancy (%)  normalised (÷ 100)
-  [-1]                          — emergency vehicle on any controlled lane (0/1)
+  [PHASE_ELAPSED_IDX]           — phase elapsed normalised (÷ 120 s)
+  [MIN_GREEN_READY_IDX]         — binary flag: min-green already satisfied
+  [QUEUE_START_IDX : QUEUE_END_IDX]
+                                — per-lane queue density on incoming lanes
+  [DENSITY_START_IDX : DENSITY_END_IDX]
+                                — per-lane density on incoming lanes
+  [CURRENT_PHASE_QUEUE_IDX]     — mean queue density for current phase lanes
+  [NEXT_PHASE_QUEUE_IDX]        — mean queue density for next phase lanes
+  [LOCAL_PRESSURE_IDX]          — local queue pressure (incoming − outgoing)
+  [EMERGENCY_IDX]               — emergency vehicle on any controlled lane (0/1)
 
-Total: 8 + 1 + 16 + 16 + 1 = 42
+Total: 8 + 1 + 1 + 16 + 16 + 1 + 1 + 1 + 1 = 46
 
 Action space
 ------------
@@ -21,10 +27,13 @@ Action space
 
 Reward
 ------
-  r = −(total_halting / max_expected_halting) + throughput_bonus
-  where max_expected_halting = MAX_LANES * 20.
+  r = queue_penalty + pressure_penalty + throughput_bonus + waiting_penalty
 
-  throughput_bonus = vehicles_cleared_step / 10.0  (counts passed detectors)
+The design follows the traffic-signal RL literature more closely than the
+original implementation by using queue density, lane density, and a pressure
+signal derived from incoming vs outgoing queues. Pressure is used as a
+stabilizing secondary signal rather than a stand-alone objective because this
+project's main KPI remains queue/halting reduction.
 
 Usage modes
 -----------
@@ -52,16 +61,41 @@ from controllers.rl.safety_guardrails import GuardrailConfig, TLSSafetyGuardrail
 MAX_PHASES = 8
 MAX_LANES = 16
 ELAPSED_SCALE_S = 120.0
-HALTING_SCALE = 20.0   # vehicles per lane normalisation
-OBS_DIM = MAX_PHASES + 1 + MAX_LANES + MAX_LANES + 1  # = 42
+LANE_CAPACITY_FALLBACK = 20.0
+EFFECTIVE_VEHICLE_LENGTH_M = 7.5
+
+PHASE_ELAPSED_IDX = MAX_PHASES
+MIN_GREEN_READY_IDX = PHASE_ELAPSED_IDX + 1
+QUEUE_START_IDX = MIN_GREEN_READY_IDX + 1
+QUEUE_END_IDX = QUEUE_START_IDX + MAX_LANES
+DENSITY_START_IDX = QUEUE_END_IDX
+DENSITY_END_IDX = DENSITY_START_IDX + MAX_LANES
+CURRENT_PHASE_QUEUE_IDX = DENSITY_END_IDX
+NEXT_PHASE_QUEUE_IDX = CURRENT_PHASE_QUEUE_IDX + 1
+LOCAL_PRESSURE_IDX = NEXT_PHASE_QUEUE_IDX + 1
+EMERGENCY_IDX = LOCAL_PRESSURE_IDX + 1
+OBS_DIM = EMERGENCY_IDX + 1
+
+
+def align_observation_dim(obs: np.ndarray, expected_dim: int) -> np.ndarray:
+    """Pad or truncate observations to the dimension expected by the agent."""
+    if obs.shape[0] == expected_dim:
+        return obs.astype(np.float32, copy=False)
+    if obs.shape[0] > expected_dim:
+        return obs[:expected_dim].astype(np.float32, copy=False)
+
+    pad = np.zeros(expected_dim - obs.shape[0], dtype=np.float32)
+    return np.concatenate([obs.astype(np.float32, copy=False), pad], dtype=np.float32)
 
 
 @dataclass
 class EnvConfig:
     guardrail: GuardrailConfig = field(default_factory=GuardrailConfig)
     reward_halting_weight: float = 1.0
+    reward_pressure_weight: float = 0.5
     reward_throughput_weight: float = 0.5
     reward_waiting_time_weight: float = 0.0  # optional secondary signal
+    include_phase_competition_features: bool = True
     max_episode_steps: int = 1200
     sumo_step_length_s: float = 1.0
 
@@ -94,8 +128,10 @@ class TrafficSignalEnv:
         # Discovered at first observe() call (deferred so env can be created
         # before SUMO starts — useful for type-checking / unit tests).
         self._incoming_lanes: list[str] = []
+        self._outgoing_lanes: list[str] = []
         self._n_phases: int = 4
         self._initialized: bool = False
+        self._lane_capacity_cache: dict[str, float] = {}
 
         # Episode bookkeeping
         self._step_count: int = 0
@@ -123,17 +159,25 @@ class TrafficSignalEnv:
 
         try:
             controlled_links = self._traci.trafficlight.getControlledLinks(self.tls_id)
-            seen: set[str] = set()
+            seen_incoming: set[str] = set()
+            seen_outgoing: set[str] = set()
             lanes: list[str] = []
+            out_lanes: list[str] = []
             for link_group in controlled_links:
                 for link in link_group:
                     incoming = str(link[0])
-                    if incoming and incoming not in seen:
-                        seen.add(incoming)
+                    if incoming and incoming not in seen_incoming:
+                        seen_incoming.add(incoming)
                         lanes.append(incoming)
+                    outgoing = str(link[1]) if len(link) > 1 else ""
+                    if outgoing and outgoing not in seen_outgoing:
+                        seen_outgoing.add(outgoing)
+                        out_lanes.append(outgoing)
             self._incoming_lanes = lanes[:MAX_LANES]
+            self._outgoing_lanes = out_lanes[:MAX_LANES]
         except Exception:
             self._incoming_lanes = []
+            self._outgoing_lanes = []
 
         current_phase = 0
         try:
@@ -201,6 +245,65 @@ class TrafficSignalEnv:
         except Exception:
             return max(1, int(self._n_phases))
 
+    def _lane_capacity(self, lane_id: str) -> float:
+        cached = self._lane_capacity_cache.get(lane_id)
+        if cached is not None:
+            return cached
+
+        try:
+            length_m = float(self._traci.lane.getLength(lane_id))
+        except Exception:
+            length_m = LANE_CAPACITY_FALLBACK * EFFECTIVE_VEHICLE_LENGTH_M
+
+        capacity = max(1.0, length_m / EFFECTIVE_VEHICLE_LENGTH_M)
+        self._lane_capacity_cache[lane_id] = capacity
+        return capacity
+
+    def _lane_density(self, lane_id: str) -> float:
+        try:
+            veh_count = float(self._traci.lane.getLastStepVehicleNumber(lane_id))
+        except Exception:
+            veh_count = 0.0
+        return float(min(1.0, veh_count / self._lane_capacity(lane_id)))
+
+    def _lane_queue_density(self, lane_id: str) -> float:
+        try:
+            halting = float(self._traci.lane.getLastStepHaltingNumber(lane_id))
+        except Exception:
+            halting = 0.0
+        return float(min(1.0, halting / self._lane_capacity(lane_id)))
+
+    def local_pressure(self) -> float:
+        """Return a normalized queue-pressure proxy (incoming minus outgoing)."""
+        incoming = [self._lane_queue_density(lane) for lane in self._incoming_lanes]
+        outgoing = [self._lane_queue_density(lane) for lane in self._outgoing_lanes]
+        incoming_mean = float(np.mean(incoming)) if incoming else 0.0
+        outgoing_mean = float(np.mean(outgoing)) if outgoing else 0.0
+        return float(np.clip(incoming_mean - outgoing_mean, -1.0, 1.0))
+
+    def _phase_queue_summary(
+        self,
+        queue_density: list[float],
+        phase: int,
+        phase_count: int,
+    ) -> tuple[float, float]:
+        if not self._cfg.include_phase_competition_features:
+            return 0.0, 0.0
+
+        effective_n = max(1, min(MAX_PHASES, phase_count))
+        lanes_per_phase = max(1, MAX_LANES // effective_n)
+        current_phase = max(0, min(MAX_PHASES - 1, int(phase)))
+        next_phase = (current_phase + 1) % effective_n
+
+        current_start = current_phase * lanes_per_phase
+        current_end = current_start + lanes_per_phase
+        next_start = next_phase * lanes_per_phase
+        next_end = next_start + lanes_per_phase
+
+        current_queue = float(np.mean(queue_density[current_start:current_end]))
+        next_queue = float(np.mean(queue_density[next_start:next_end]))
+        return current_queue, next_queue
+
     # ── Observation ───────────────────────────────────────────────────────
 
     def observe(self, sim_time: float) -> np.ndarray:
@@ -220,25 +323,26 @@ class TrafficSignalEnv:
         elapsed_s = self._phase_elapsed_seconds(sim_time)
         elapsed_norm = min(1.0, elapsed_s / ELAPSED_SCALE_S)
 
-        # Per-lane halting + occupancy
-        halting = []
-        occupancy = []
+        min_green_ready = 1.0 if elapsed_s >= self._cfg.guardrail.min_green_seconds else 0.0
+
+        # Per-lane queue density + density
+        queue_density = []
+        density = []
         for lane in self._incoming_lanes:
-            try:
-                h = float(self._traci.lane.getLastStepHaltingNumber(lane))
-            except Exception:
-                h = 0.0
-            try:
-                occ = float(self._traci.lane.getLastStepOccupancy(lane))
-            except Exception:
-                occ = 0.0
-            halting.append(min(1.0, h / HALTING_SCALE))
-            occupancy.append(min(1.0, occ / 100.0))
+            queue_density.append(self._lane_queue_density(lane))
+            density.append(self._lane_density(lane))
 
         # Pad to MAX_LANES
-        while len(halting) < MAX_LANES:
-            halting.append(0.0)
-            occupancy.append(0.0)
+        while len(queue_density) < MAX_LANES:
+            queue_density.append(0.0)
+            density.append(0.0)
+
+        current_phase_queue, next_phase_queue = self._phase_queue_summary(
+            queue_density,
+            phase=phase,
+            phase_count=self._n_phases,
+        )
+        local_pressure = self.local_pressure()
 
         # Emergency flag
         emergency = 0.0
@@ -257,7 +361,11 @@ class TrafficSignalEnv:
             pass
 
         obs = np.array(
-            phase_oh + [elapsed_norm] + halting[:MAX_LANES] + occupancy[:MAX_LANES] + [emergency],
+            phase_oh
+            + [elapsed_norm, min_green_ready]
+            + queue_density[:MAX_LANES]
+            + density[:MAX_LANES]
+            + [current_phase_queue, next_phase_queue, local_pressure, emergency],
             dtype=np.float32,
         )
         assert obs.shape == (OBS_DIM,), f"obs shape mismatch: {obs.shape}"
@@ -267,18 +375,24 @@ class TrafficSignalEnv:
 
     def compute_reward(self) -> float:
         """Compute per-step reward from TraCI state."""
-        total_halting = 0.0
+        queue_density_values: list[float] = []
         total_waiting = 0.0
         try:
             for lane in self._incoming_lanes:
-                total_halting += float(self._traci.lane.getLastStepHaltingNumber(lane))
+                queue_density_values.append(self._lane_queue_density(lane))
                 if self._cfg.reward_waiting_time_weight > 0:
                     total_waiting += float(self._traci.lane.getWaitingTime(lane))
         except Exception:
             pass
 
-        max_halt = max(1.0, len(self._incoming_lanes) * HALTING_SCALE)
-        halt_penalty = -(total_halting / max_halt) * self._cfg.reward_halting_weight
+        mean_queue_density = float(np.mean(queue_density_values)) if queue_density_values else 0.0
+        queue_penalty = -mean_queue_density * self._cfg.reward_halting_weight
+
+        # Pressure guidance inspired by PressLight/MPLight style coordination.
+        # We penalize unresolved upstream pressure but do not reward downstream
+        # spillback states directly.
+        local_pressure = self.local_pressure()
+        pressure_penalty = -max(0.0, local_pressure) * self._cfg.reward_pressure_weight
 
         # Throughput bonus: vehicles that left incoming lanes this step
         throughput = 0.0
@@ -303,8 +417,8 @@ class TrafficSignalEnv:
             waiting_norm = min(1.0, max(0.0, mean_waiting_s / 60.0))
             waiting_penalty = -waiting_norm * self._cfg.reward_waiting_time_weight
 
-        self._prev_halting = total_halting
-        return halt_penalty + throughput_bonus + waiting_penalty
+        self._prev_halting = mean_queue_density
+        return queue_penalty + pressure_penalty + throughput_bonus + waiting_penalty
 
     # ── Action application ────────────────────────────────────────────────
 
@@ -438,13 +552,13 @@ class MultiJunctionEnv:
     """Thin wrapper around multiple TrafficSignalEnv instances for MARL.
 
     Each junction has its own independent state and action.  Coordination is
-    implicit: each agent's observation includes the mean congestion of its K
-    nearest neighbours (appended as a scalar at obs[-2]).
+    implicit: each agent's observation includes the mean queue pressure of its
+    K nearest neighbours (appended as a scalar at obs[-1]).
 
-    Observation dimension per junction: OBS_DIM + 1 = 43
+    Observation dimension per junction: OBS_DIM + 1 = 47
     """
 
-    OBS_DIM: int = OBS_DIM + 1  # +1 for neighbour congestion signal
+    OBS_DIM: int = OBS_DIM + 1  # +1 for neighbour pressure signal
     N_ACTIONS: int = 2
 
     def __init__(
@@ -549,23 +663,20 @@ class MultiJunctionEnv:
         return neighbours
 
     def observe_all(self, sim_time: float) -> dict[str, np.ndarray]:
-        """Return per-junction observations augmented with neighbour congestion."""
+        """Return per-junction observations augmented with neighbour pressure."""
         base_obs: dict[str, np.ndarray] = {
             tid: self._envs[tid].observe(sim_time) for tid in self.tls_ids
         }
-        # Compute mean halting density for each junction
-        halt_start = MAX_PHASES + 1
-        halt_end = halt_start + MAX_LANES
-        congestion: dict[str, float] = {
-            tid: float(np.mean(obs[halt_start:halt_end]))
+        local_pressure: dict[str, float] = {
+            tid: float(obs[LOCAL_PRESSURE_IDX])
             for tid, obs in base_obs.items()
         }
 
         augmented: dict[str, np.ndarray] = {}
         for tid, obs in base_obs.items():
             nbrs = self._neighbours.get(tid, [])
-            nbr_congestion = float(np.mean([congestion[n] for n in nbrs])) if nbrs else 0.0
-            augmented[tid] = np.append(obs, nbr_congestion).astype(np.float32)
+            nbr_pressure = float(np.mean([local_pressure[n] for n in nbrs])) if nbrs else 0.0
+            augmented[tid] = np.append(obs, nbr_pressure).astype(np.float32)
         return augmented
 
     def apply_actions(

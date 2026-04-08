@@ -63,19 +63,22 @@ if str(_REPO_ROOT) not in sys.path:
 
 from controllers.rl.dqn_agent import DQNAgent
 from controllers.rl.improved_dqn_agent import ImprovedDQNAgent
-from controllers.rl.baselines import FixedTimePolicy, SimpleActuatedPolicy, make_baseline
+from controllers.rl.baselines import FixedTimePolicy, MaxPressurePolicy, SimpleActuatedPolicy, make_baseline
 from controllers.rl.safety_guardrails import GuardrailConfig
 from controllers.rl.traffic_signal_env import (
-    OBS_DIM,
-    MAX_LANES,
-    MAX_PHASES,
     EnvConfig,
-    TrafficSignalEnv,
+    LOCAL_PRESSURE_IDX,
     MultiJunctionEnv,
+    OBS_DIM,
+    QUEUE_END_IDX,
+    QUEUE_START_IDX,
+    TrafficSignalEnv,
+    align_observation_dim,
 )
 
 
 RLAgent = DQNAgent | ImprovedDQNAgent
+ReferencePolicy = MaxPressurePolicy | SimpleActuatedPolicy
 
 
 def _is_rl_agent(policy: Any) -> bool:
@@ -84,13 +87,31 @@ def _is_rl_agent(policy: Any) -> bool:
 
 def _align_obs_dim(obs: np.ndarray, expected_dim: int) -> np.ndarray:
     """Align observation dimensionality to the target agent input size."""
-    if obs.shape[0] == expected_dim:
-        return obs.astype(np.float32, copy=False)
-    if obs.shape[0] > expected_dim:
-        return obs[:expected_dim].astype(np.float32, copy=False)
+    return align_observation_dim(obs, expected_dim)
 
-    pad = np.zeros(expected_dim - obs.shape[0], dtype=np.float32)
-    return np.concatenate([obs.astype(np.float32, copy=False), pad], dtype=np.float32)
+
+def _build_reference_policy(name: str) -> ReferencePolicy | None:
+    if name == "max_pressure":
+        return MaxPressurePolicy()
+    if name == "simple_actuated":
+        return SimpleActuatedPolicy()
+    return None
+
+
+def _reference_prob_for_episode(
+    start: float,
+    end: float,
+    episode_idx: int,
+    total_episodes: int,
+    decay_episodes: int,
+) -> float:
+    if start <= 0.0 and end <= 0.0:
+        return 0.0
+    effective_decay = decay_episodes if decay_episodes > 0 else max(1, total_episodes // 3)
+    if effective_decay <= 1:
+        return float(end)
+    progress = min(1.0, max(0.0, episode_idx / float(effective_decay - 1)))
+    return float(start + progress * (end - start))
 
 
 def _load_saved_rl_agent(model_dir: Path, run_id: str = "latest") -> RLAgent:
@@ -182,7 +203,11 @@ def _run_episode(
     *,
     train_agent: RLAgent | None = None,
     train_every: int = 4,
+    decision_interval_steps: int = 5,
     env_cfg: EnvConfig | None = None,
+    reference_policy: ReferencePolicy | None = None,
+    reference_action_prob: float = 0.0,
+    collect_demo_samples: list[tuple[np.ndarray, int]] | None = None,
 ) -> dict[str, Any]:
     """Start SUMO, run one episode, close SUMO.  Returns KPI dict."""
     cmd = [
@@ -204,48 +229,69 @@ def _run_episode(
     total_waiting = 0.0
     vehicles_passed = 0
     steps = 0
+    decision_steps = 0
     train_losses: list[float] = []
+    reference_actions_used = 0
+    action_rng = np.random.default_rng(seed + 17)
 
     try:
-        for step in range(max_steps):
+        while steps < max_steps:
             sim_time = float(traci.simulation.getTime())
+            action_from_reference = False
 
-            # Select action
             if _is_rl_agent(policy):
                 obs_input = _align_obs_dim(obs, int(policy.obs_dim))
-                action = policy.select_action(obs_input)
-            elif isinstance(policy, (FixedTimePolicy, SimpleActuatedPolicy)):
+                if reference_policy is not None and action_rng.random() < max(0.0, reference_action_prob):
+                    action = reference_policy.select_action(obs, tls_id, sim_time, n_phases=env.n_phases)
+                    action_from_reference = True
+                    reference_actions_used += 1
+                else:
+                    action = policy.select_action(obs_input)
+            elif isinstance(policy, (FixedTimePolicy, SimpleActuatedPolicy, MaxPressurePolicy)):
                 action = policy.select_action(obs, tls_id, sim_time, n_phases=env.n_phases)
             else:
                 action = 0
 
-            # Step environment
-            next_obs, reward, done, info = env.step(action)
-            total_reward += reward
-            steps += 1
+            if collect_demo_samples is not None and action_from_reference:
+                collect_demo_samples.append(
+                    (_align_obs_dim(obs, int(train_agent.obs_dim if train_agent is not None else OBS_DIM)).copy(), int(action))
+                )
 
-            # Collect KPI signals from TraCI
-            try:
-                for lane in env.incoming_lanes:
-                    total_halting += traci.lane.getLastStepHaltingNumber(lane)
-                    total_waiting += traci.lane.getWaitingTime(lane)
-            except Exception:
-                pass
-            try:
-                vehicles_passed += traci.simulation.getArrivedNumber()
-            except Exception:
-                pass
+            aggregated_reward = 0.0
+            done = False
+            next_obs = obs
 
-            # Training (only when agent == policy)
-            if train_agent is not None and _is_rl_agent(policy):
+            for substep in range(min(decision_interval_steps, max_steps - steps)):
+                env_action = action if substep == 0 else 0
+                next_obs, reward, done, _info = env.step(env_action)
+                aggregated_reward += reward
+                total_reward += reward
+                steps += 1
+
+                try:
+                    for lane in env.incoming_lanes:
+                        total_halting += traci.lane.getLastStepHaltingNumber(lane)
+                        total_waiting += traci.lane.getWaitingTime(lane)
+                except Exception:
+                    pass
+                try:
+                    vehicles_passed += traci.simulation.getArrivedNumber()
+                except Exception:
+                    pass
+
+                if done:
+                    break
+
+            if train_agent is not None:
                 train_obs = _align_obs_dim(obs, int(train_agent.obs_dim))
                 train_next_obs = _align_obs_dim(next_obs, int(train_agent.obs_dim))
-                train_agent.store(train_obs, action, reward, train_next_obs, done)
-                if step % train_every == 0:
+                train_agent.store(train_obs, action, aggregated_reward, train_next_obs, done)
+                if _is_rl_agent(policy) and train_every > 0 and decision_steps % max(1, train_every) == 0:
                     loss = train_agent.train_step()
                     if loss is not None:
                         train_losses.append(loss)
 
+            decision_steps += 1
             obs = next_obs
             if done:
                 break
@@ -262,7 +308,9 @@ def _run_episode(
         "mean_waiting_s": round(mean_waiting, 4),
         "vehicles_passed": vehicles_passed,
         "steps": steps,
+        "decision_steps": decision_steps,
         "mean_loss": round(mean_loss, 6) if mean_loss is not None else None,
+        "reference_actions_used": reference_actions_used,
     }
 
 
@@ -271,9 +319,10 @@ def _run_multi_agent_episode(
     sumo_binary: str,
     sumocfg: Path,
     tls_ids: list[str],
-    agents: dict[str, DQNAgent | ImprovedDQNAgent | SimpleActuatedPolicy],
+    agents: dict[str, DQNAgent | ImprovedDQNAgent | SimpleActuatedPolicy | MaxPressurePolicy],
     max_steps: int,
     seed: int,
+    decision_interval_steps: int = 5,
     env_cfg: EnvConfig | None = None,
 ) -> dict[str, Any]:
     """MARL evaluation episode over all TLS junctions."""
@@ -292,40 +341,74 @@ def _run_multi_agent_episode(
     obs_map = env.reset_all(sim_time)
 
     total_rewards: dict[str, float] = {tid: 0.0 for tid in tls_ids}
-    total_halting = 0.0
     vehicles_passed = 0
     steps = 0
+    decision_steps = 0
 
     try:
-        for step in range(max_steps):
+        while steps < max_steps:
             sim_time = float(traci.simulation.getTime())
 
             actions: dict[str, int] = {}
-            for tid in tls_ids:
-                agent = agents[tid]
-                obs = obs_map[tid]
-                if isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
-                    obs_input = obs[:OBS_DIM] if agent.obs_dim == OBS_DIM else obs
-                    actions[tid] = agent.select_action(obs_input, greedy=True)
-                else:
-                    actions[tid] = agent.select_action(obs[:OBS_DIM], tid, sim_time)
+            rl_batch_obs: list[np.ndarray] = []
+            rl_batch_tids: list[str] = []
+            shared_eval_agent: ImprovedDQNAgent | None = None
+            if tls_ids:
+                candidate_agent = agents.get(tls_ids[0])
+                if isinstance(candidate_agent, ImprovedDQNAgent) and hasattr(candidate_agent, "select_actions_batch"):
+                    if all(agents[tid] is candidate_agent for tid in tls_ids if isinstance(agents[tid], ImprovedDQNAgent)):
+                        shared_eval_agent = candidate_agent
 
-            env.apply_actions(actions, sim_time)
-            traci.simulationStep()
-            steps += 1
+            if shared_eval_agent is not None:
+                for tid in tls_ids:
+                    obs = obs_map[tid]
+                    rl_batch_obs.append(_align_obs_dim(obs, int(shared_eval_agent.obs_dim)))
+                    rl_batch_tids.append(tid)
+                batch_actions = shared_eval_agent.select_actions_batch(
+                    np.stack(rl_batch_obs, axis=0),
+                    greedy=True,
+                )
+                for index, tid in enumerate(rl_batch_tids):
+                    actions[tid] = int(batch_actions[index])
+            else:
+                for tid in tls_ids:
+                    agent = agents[tid]
+                    obs = obs_map[tid]
+                    if isinstance(agent, (DQNAgent, ImprovedDQNAgent)):
+                        actions[tid] = agent.select_action(
+                            _align_obs_dim(obs, int(agent.obs_dim)),
+                            greedy=True,
+                        )
+                    else:
+                        actions[tid] = agent.select_action(obs[:OBS_DIM], tid, sim_time)
 
-            sim_time = float(traci.simulation.getTime())
-            obs_map = env.observe_all(sim_time)
-            rewards = env.compute_rewards()
+            aggregated_rewards = {tid: 0.0 for tid in tls_ids}
+            done = False
+            for substep in range(min(decision_interval_steps, max_steps - steps)):
+                env.apply_actions(
+                    {tid: actions[tid] if substep == 0 else 0 for tid in tls_ids},
+                    sim_time,
+                )
+                traci.simulationStep()
+                steps += 1
 
-            for tid, r in rewards.items():
-                total_rewards[tid] += r
-            try:
-                vehicles_passed += traci.simulation.getArrivedNumber()
-            except Exception:
-                pass
+                sim_time = float(traci.simulation.getTime())
+                obs_map = env.observe_all(sim_time)
+                rewards = env.compute_rewards()
+                for tid, reward in rewards.items():
+                    total_rewards[tid] += reward
+                    aggregated_rewards[tid] += reward
+                try:
+                    vehicles_passed += traci.simulation.getArrivedNumber()
+                except Exception:
+                    pass
 
-            if traci.simulation.getMinExpectedNumber() <= 0:
+                done = steps >= max_steps or traci.simulation.getMinExpectedNumber() <= 0
+                if done:
+                    break
+
+            decision_steps += 1
+            if done:
                 break
     finally:
         traci.close()
@@ -335,6 +418,7 @@ def _run_multi_agent_episode(
         "mean_reward": round(float(np.mean(list(total_rewards.values()))), 4),
         "vehicles_passed": vehicles_passed,
         "steps": steps,
+        "decision_steps": decision_steps,
     }
 
 
@@ -349,7 +433,11 @@ def _run_shared_multi_agent_train_episode(
     *,
     train_every: int = 4,
     train_updates_per_step: int = 1,
+    decision_interval_steps: int = 5,
     env_cfg: EnvConfig | None = None,
+    reference_policy: ReferencePolicy | None = None,
+    reference_action_prob: float = 0.0,
+    collect_demo_samples: list[tuple[np.ndarray, int]] | None = None,
 ) -> dict[str, Any]:
     """Training episode where one shared DQN learns from all junction transitions."""
     cmd = [
@@ -370,62 +458,97 @@ def _run_shared_multi_agent_train_episode(
     total_halting = 0.0
     vehicles_passed = 0
     steps = 0
+    decision_steps = 0
     train_losses: list[float] = []
-
-    halt_start = MAX_PHASES + 1
-    halt_end = halt_start + MAX_LANES
+    reference_actions_used = 0
+    action_rng = np.random.default_rng(seed + 23)
 
     try:
-        for step in range(max_steps):
+        while steps < max_steps:
             sim_time = float(traci.simulation.getTime())
 
             actions: dict[str, int] = {}
-            for tid in tls_ids:
-                obs = obs_map[tid]
-                obs_input = obs[:OBS_DIM] if shared_agent.obs_dim == OBS_DIM else obs
-                actions[tid] = shared_agent.select_action(obs_input)
-
-            env.apply_actions(actions, sim_time)
-            traci.simulationStep()
-            steps += 1
-
-            sim_time = float(traci.simulation.getTime())
-            next_obs_map = env.observe_all(sim_time)
-            rewards = env.compute_rewards()
-            done = (
-                steps >= max_steps
-                or traci.simulation.getMinExpectedNumber() <= 0
+            obs_batch = np.stack(
+                [_align_obs_dim(obs_map[tid], int(shared_agent.obs_dim)) for tid in tls_ids],
+                axis=0,
             )
+            if isinstance(shared_agent, ImprovedDQNAgent) and hasattr(shared_agent, "select_actions_batch"):
+                batch_actions = shared_agent.select_actions_batch(obs_batch, greedy=False)
+                for index, tid in enumerate(tls_ids):
+                    actions[tid] = int(batch_actions[index])
+            else:
+                for index, tid in enumerate(tls_ids):
+                    actions[tid] = shared_agent.select_action(obs_batch[index])
+
+            reference_tids: list[str] = []
+            if reference_policy is not None and reference_action_prob > 0.0:
+                reference_mask = action_rng.random(len(tls_ids)) < reference_action_prob
+                for index, tid in enumerate(tls_ids):
+                    if not reference_mask[index]:
+                        continue
+                    actions[tid] = reference_policy.select_action(
+                        obs_map[tid][:OBS_DIM],
+                        tid,
+                        sim_time,
+                    )
+                    reference_tids.append(tid)
+                reference_actions_used += len(reference_tids)
+                if collect_demo_samples is not None:
+                    for tid in reference_tids:
+                        collect_demo_samples.append(
+                            (_align_obs_dim(obs_map[tid], int(shared_agent.obs_dim)).copy(), int(actions[tid]))
+                        )
+
+            reward_sums = {tid: 0.0 for tid in tls_ids}
+            done = False
+            for substep in range(min(decision_interval_steps, max_steps - steps)):
+                env.apply_actions(
+                    {tid: actions[tid] if substep == 0 else 0 for tid in tls_ids},
+                    sim_time,
+                )
+                traci.simulationStep()
+                steps += 1
+
+                sim_time = float(traci.simulation.getTime())
+                next_obs_map = env.observe_all(sim_time)
+                rewards = env.compute_rewards()
+                for tid, reward in rewards.items():
+                    reward_sums[tid] += float(reward)
+                    total_rewards[tid] += float(reward)
+
+                queue_values = [
+                    float(np.mean(next_obs_map[tid][QUEUE_START_IDX:QUEUE_END_IDX]))
+                    for tid in tls_ids
+                    if tid in next_obs_map
+                ]
+                if queue_values:
+                    total_halting += float(np.mean(queue_values))
+
+                try:
+                    vehicles_passed += traci.simulation.getArrivedNumber()
+                except Exception:
+                    pass
+
+                done = steps >= max_steps or traci.simulation.getMinExpectedNumber() <= 0
+                if done:
+                    break
 
             for tid in tls_ids:
-                obs = obs_map[tid]
-                next_obs = next_obs_map[tid]
-                obs_input = obs[:OBS_DIM] if shared_agent.obs_dim == OBS_DIM else obs
-                next_obs_input = next_obs[:OBS_DIM] if shared_agent.obs_dim == OBS_DIM else next_obs
-                reward = float(rewards.get(tid, 0.0))
+                shared_agent.store(
+                    _align_obs_dim(obs_map[tid], int(shared_agent.obs_dim)),
+                    actions[tid],
+                    reward_sums[tid],
+                    _align_obs_dim(next_obs_map[tid], int(shared_agent.obs_dim)),
+                    done,
+                )
 
-                shared_agent.store(obs_input, actions[tid], reward, next_obs_input, done)
-                total_rewards[tid] += reward
-
-            if step % max(1, train_every) == 0:
-                for _ in range(max(1, train_updates_per_step)):
+            if train_every > 0 and train_updates_per_step > 0 and decision_steps % max(1, train_every) == 0:
+                for _ in range(train_updates_per_step):
                     loss = shared_agent.train_step()
                     if loss is not None:
                         train_losses.append(loss)
 
-            congestion_values = [
-                float(np.mean(obs_map[tid][halt_start:halt_end]))
-                for tid in tls_ids
-                if tid in obs_map
-            ]
-            if congestion_values:
-                total_halting += float(np.mean(congestion_values))
-
-            try:
-                vehicles_passed += traci.simulation.getArrivedNumber()
-            except Exception:
-                pass
-
+            decision_steps += 1
             obs_map = next_obs_map
             if done:
                 break
@@ -441,8 +564,10 @@ def _run_shared_multi_agent_train_episode(
         "mean_waiting_s": None,
         "vehicles_passed": vehicles_passed,
         "steps": steps,
+        "decision_steps": decision_steps,
         "mean_loss": round(mean_loss, 6) if mean_loss is not None else None,
         "n_junctions": len(tls_ids),
+        "reference_actions_used": reference_actions_used,
     }
 
 
@@ -471,10 +596,12 @@ def parse_args() -> argparse.Namespace:
                    help="Training episodes (overrides --profile)")
     p.add_argument("--steps-per-episode", type=int, default=None,
                    help="Max SUMO steps per episode (overrides --profile)")
+    p.add_argument("--decision-interval-steps", type=int, default=5,
+                   help="Apply one RL decision every N SUMO steps (default: 5)")
     p.add_argument("--train-every", type=int, default=4,
-                   help="Run one (or more) gradient updates every N simulation steps")
+                   help="Run one (or more) gradient updates every N RL decisions")
     p.add_argument("--train-updates-per-step", type=int, default=1,
-                   help="How many gradient updates to run at each train step")
+                   help="How many gradient updates to run at each RL decision update")
     p.add_argument("--eval-episodes", type=int, default=3,
                    help="Evaluation episodes per policy")
     p.add_argument("--seed", type=int, default=42, help="Base random seed")
@@ -483,15 +610,66 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--results-path", default="evaluation/phase4_kpi_results.json",
                    help="Path for gate-check JSON output")
     p.add_argument("--hidden-dim", type=int, default=64)
-    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--epsilon-start", type=float, default=1.0)
     p.add_argument("--epsilon-min", type=float, default=0.05)
     p.add_argument("--epsilon-decay", type=float, default=None,
                    help="Override epsilon decay. If omitted, profile/mode defaults are used")
     p.add_argument("--reward-halting-weight", type=float, default=None)
+    p.add_argument("--reward-pressure-weight", type=float, default=None)
     p.add_argument("--reward-throughput-weight", type=float, default=None)
     p.add_argument("--reward-waiting-weight", type=float, default=None)
+    p.add_argument("--disable-phase-competition-features", action="store_true",
+                   help="Disable current-vs-next phase queue features in the observation")
+    p.add_argument(
+        "--reference-policy",
+        choices=("none", "max_pressure", "simple_actuated"),
+        default="none",
+        help="Optional classical controller used for warm-start demonstrations and early guidance.",
+    )
+    p.add_argument(
+        "--reference-demo-episodes",
+        type=int,
+        default=0,
+        help="Number of pretraining episodes collected entirely from the reference policy.",
+    )
+    p.add_argument(
+        "--reference-pretrain-updates",
+        type=int,
+        default=0,
+        help="Large-margin imitation updates run on collected demonstration states.",
+    )
+    p.add_argument(
+        "--reference-pretrain-batch-size",
+        type=int,
+        default=128,
+        help="Mini-batch size used during demonstration pretraining.",
+    )
+    p.add_argument(
+        "--reference-pretrain-margin",
+        type=float,
+        default=0.8,
+        help="Large-margin target used for DQfD-style imitation warm start.",
+    )
+    p.add_argument(
+        "--reference-prob-start",
+        type=float,
+        default=0.0,
+        help="Probability of taking the reference action at the start of RL training.",
+    )
+    p.add_argument(
+        "--reference-prob-end",
+        type=float,
+        default=0.0,
+        help="Probability of taking the reference action after the decay window.",
+    )
+    p.add_argument(
+        "--reference-prob-decay-episodes",
+        type=int,
+        default=0,
+        help="Episodes over which reference-action guidance decays linearly.",
+    )
     p.add_argument("--min-green", type=float, default=15.0,
                    help="Minimum green time enforced by guardrail (seconds)")
     p.add_argument("--use-improved-dqn", action="store_true",
@@ -609,33 +787,37 @@ def _discover_tls_ids(
 
 
 def _resolve_epsilon_decay(args: argparse.Namespace, training_mode: str) -> float:
-    """Resolve exploration decay with conservative defaults for long runs."""
+    """Resolve exploration decay for decision-interval based training."""
     if args.epsilon_decay is not None:
         return float(args.epsilon_decay)
     if training_mode == "all_tls_shared":
-        # Slower decay for long horizon/all-junction runs avoids premature policy collapse.
-        return 0.99995
+        return 0.9993
     if args.profile == "full":
-        return 0.9995
-    if args.profile == "medium":
         return 0.9990
+    if args.profile == "medium":
+        return 0.9985
     return 0.9950
 
 
-def _resolve_reward_weights(args: argparse.Namespace) -> tuple[float, float, float]:
+def _resolve_reward_weights(args: argparse.Namespace) -> tuple[float, float, float, float]:
     """Resolve reward shaping weights, with all-TLS defaults tuned for network flow."""
     halting_w = args.reward_halting_weight if args.reward_halting_weight is not None else 1.0
+    if args.reward_pressure_weight is not None:
+        pressure_w = float(args.reward_pressure_weight)
+    else:
+        pressure_w = 0.6 if args.train_all_tls else 0.4
+
     if args.reward_throughput_weight is not None:
         throughput_w = float(args.reward_throughput_weight)
     else:
-        throughput_w = 0.4 if args.train_all_tls else 0.5
+        throughput_w = 0.3 if args.train_all_tls else 0.4
 
     if args.reward_waiting_weight is not None:
         waiting_w = float(args.reward_waiting_weight)
     else:
-        waiting_w = 0.2 if args.train_all_tls else 0.0
+        waiting_w = 0.15 if args.train_all_tls else 0.05
 
-    return float(halting_w), float(throughput_w), float(waiting_w)
+    return float(halting_w), float(pressure_w), float(throughput_w), float(waiting_w)
 
 
 def _resolve_train_updates_per_step(args: argparse.Namespace, training_mode: str) -> int:
@@ -659,7 +841,7 @@ def main() -> None:
     training_mode = "all_tls_shared" if args.train_all_tls else "single_tls"
     epsilon_decay = _resolve_epsilon_decay(args, training_mode)
     train_updates_per_step = _resolve_train_updates_per_step(args, training_mode)
-    reward_halting_w, reward_throughput_w, reward_waiting_w = _resolve_reward_weights(args)
+    reward_halting_w, reward_pressure_w, reward_throughput_w, reward_waiting_w = _resolve_reward_weights(args)
 
     print(
         f"[P4] Phase 4 RL Training — mode={training_mode}  "
@@ -676,13 +858,21 @@ def main() -> None:
         f"eps=({args.epsilon_start:g}->{args.epsilon_min:g}, decay={epsilon_decay:g})"
     )
     print(
-        f"[P4] Optimizer cadence: train_every={args.train_every} "
-        f"updates/step={train_updates_per_step}"
+        f"[P4] Decision cadence: every {args.decision_interval_steps} sim steps | "
+        f"train_every={args.train_every} decisions | updates/step={train_updates_per_step}"
     )
     print(
         f"[P4] Reward weights: halting={reward_halting_w:g} "
-        f"throughput={reward_throughput_w:g} waiting={reward_waiting_w:g}"
+        f"pressure={reward_pressure_w:g} throughput={reward_throughput_w:g} "
+        f"waiting={reward_waiting_w:g}"
     )
+    if args.reference_policy != "none":
+        print(
+            f"[P4] Reference warm start: policy={args.reference_policy} "
+            f"demo_eps={args.reference_demo_episodes} "
+            f"pretrain_updates={args.reference_pretrain_updates} "
+            f"guidance=({args.reference_prob_start:g}->{args.reference_prob_end:g})"
+        )
 
     # Discover reference junction for single-junction evaluation.
     tls_id = args.tls_id
@@ -710,8 +900,10 @@ def main() -> None:
     env_cfg = EnvConfig(
         guardrail=GuardrailConfig(min_green_seconds=args.min_green),
         reward_halting_weight=reward_halting_w,
+        reward_pressure_weight=reward_pressure_w,
         reward_throughput_weight=reward_throughput_w,
         reward_waiting_time_weight=reward_waiting_w,
+        include_phase_competition_features=not args.disable_phase_competition_features,
         max_episode_steps=steps_ep,
     )
 
@@ -721,7 +913,7 @@ def main() -> None:
     use_improved_dqn = args.use_improved_dqn or (args.train_all_tls and not args.force_basic_dqn)
 
     if use_improved_dqn:
-        print("[P4] Using ImprovedDQNAgent (Double DQN, 3-layer MLP)")
+        print("[P4] Using ImprovedDQNAgent (dueling Double DQN + prioritized replay)")
         agent = ImprovedDQNAgent(
             obs_dim=agent_obs_dim,
             n_actions=2,
@@ -750,6 +942,85 @@ def main() -> None:
             seed=args.seed,
         )
 
+    reference_policy = _build_reference_policy(args.reference_policy)
+    demo_collect_stats: dict[str, Any] | None = None
+    demo_pretrain_stats: dict[str, Any] | None = None
+
+    if reference_policy is not None and args.reference_demo_episodes > 0:
+        print("\n[P4] ── Reference Demonstration Warm Start ───────────────")
+        demo_samples: list[tuple[np.ndarray, int]] = []
+        demo_runs: list[dict[str, Any]] = []
+        for demo_ep in range(args.reference_demo_episodes):
+            demo_seed = args.seed + 50_000 + demo_ep
+            if args.train_all_tls:
+                demo_result = _run_shared_multi_agent_train_episode(
+                    traci,
+                    sumo_binary,
+                    sumocfg,
+                    train_tls_ids,
+                    shared_agent=agent,
+                    max_steps=steps_ep,
+                    seed=demo_seed,
+                    train_every=0,
+                    train_updates_per_step=0,
+                    decision_interval_steps=args.decision_interval_steps,
+                    env_cfg=env_cfg,
+                    reference_policy=reference_policy,
+                    reference_action_prob=1.0,
+                    collect_demo_samples=demo_samples,
+                )
+            else:
+                demo_result = _run_episode(
+                    traci,
+                    sumo_binary,
+                    sumocfg,
+                    tls_id,
+                    policy=agent,
+                    max_steps=steps_ep,
+                    seed=demo_seed,
+                    train_agent=agent,
+                    train_every=0,
+                    decision_interval_steps=args.decision_interval_steps,
+                    env_cfg=env_cfg,
+                    reference_policy=reference_policy,
+                    reference_action_prob=1.0,
+                    collect_demo_samples=demo_samples,
+                )
+            demo_runs.append(demo_result)
+
+        demo_collect_stats = {
+            "episodes": args.reference_demo_episodes,
+            "samples": len(demo_samples),
+            "mean_reward": round(float(np.mean([run["total_reward"] for run in demo_runs])), 4),
+            "mean_halting": round(float(np.mean([run["mean_halting"] for run in demo_runs])), 4),
+            "reference_actions_used": int(sum(run.get("reference_actions_used", 0) for run in demo_runs)),
+        }
+        print(
+            f"[P4] Collected {demo_collect_stats['samples']} demonstration decisions "
+            f"across {demo_collect_stats['episodes']} episode(s)"
+        )
+
+        if (
+            isinstance(agent, ImprovedDQNAgent)
+            and args.reference_pretrain_updates > 0
+            and demo_samples
+        ):
+            demo_states = np.stack([sample[0] for sample in demo_samples], axis=0)
+            demo_actions = np.array([sample[1] for sample in demo_samples], dtype=np.int32)
+            demo_pretrain_stats = agent.pretrain_from_demonstrations(
+                demo_states,
+                demo_actions,
+                n_updates=args.reference_pretrain_updates,
+                batch_size=args.reference_pretrain_batch_size,
+                margin=args.reference_pretrain_margin,
+            )
+            if demo_pretrain_stats is not None:
+                print(
+                    f"[P4] Imitation warm start: mean_loss="
+                    f"{demo_pretrain_stats['mean_imitation_loss']:.4f} "
+                    f"final_loss={demo_pretrain_stats['final_imitation_loss']:.4f}"
+                )
+
     # ── Training loop ──────────────────────────────────────────────────────
     print("\n[P4] ── Training ──────────────────────────────────────────")
     train_history: list[dict[str, Any]] = []
@@ -757,6 +1028,13 @@ def main() -> None:
 
     for ep in range(n_episodes):
         ep_seed = args.seed + ep
+        reference_prob = _reference_prob_for_episode(
+            args.reference_prob_start,
+            args.reference_prob_end,
+            ep,
+            n_episodes,
+            args.reference_prob_decay_episodes,
+        )
         if args.train_all_tls:
             result = _run_shared_multi_agent_train_episode(
                 traci,
@@ -768,17 +1046,26 @@ def main() -> None:
                 seed=ep_seed,
                 train_every=args.train_every,
                 train_updates_per_step=train_updates_per_step,
+                decision_interval_steps=args.decision_interval_steps,
                 env_cfg=env_cfg,
+                reference_policy=reference_policy,
+                reference_action_prob=reference_prob,
             )
         else:
             result = _run_episode(
                 traci, sumo_binary, sumocfg, tls_id,
                 policy=agent, max_steps=steps_ep, seed=ep_seed,
-                train_agent=agent, train_every=args.train_every, env_cfg=env_cfg,
+                train_agent=agent,
+                train_every=args.train_every,
+                decision_interval_steps=args.decision_interval_steps,
+                env_cfg=env_cfg,
+                reference_policy=reference_policy,
+                reference_action_prob=reference_prob,
             )
 
         result["episode"] = ep
         result["epsilon"] = round(agent.epsilon, 4)
+        result["reference_action_prob"] = round(reference_prob, 4)
         train_history.append(result)
         agent._total_episodes += 1
 
@@ -788,13 +1075,15 @@ def main() -> None:
                     f"  ep={ep:3d}/{n_episodes}  mean_reward={result['total_reward']:+.2f}  "
                     f"mean_halting={result['mean_halting']:.3f}  "
                     f"junctions={result.get('n_junctions', len(train_tls_ids))}  "
-                    f"loss={result['mean_loss'] or 'n/a'}  ε={result['epsilon']}"
+                    f"loss={result['mean_loss'] or 'n/a'}  "
+                    f"ref={result.get('reference_actions_used', 0)}  ε={result['epsilon']}"
                 )
             else:
                 print(
                     f"  ep={ep:3d}/{n_episodes}  reward={result['total_reward']:+.2f}  "
                     f"halting={result['mean_halting']:.3f}  "
-                    f"loss={result['mean_loss'] or 'n/a'}  ε={result['epsilon']}"
+                    f"loss={result['mean_loss'] or 'n/a'}  "
+                    f"ref={result.get('reference_actions_used', 0)}  ε={result['epsilon']}"
                 )
 
     train_elapsed = time.time() - t0
@@ -808,12 +1097,18 @@ def main() -> None:
 
     # ── Evaluation: single-agent ───────────────────────────────────────────
     print("\n[P4] ── Single-Agent Evaluation ───────────────────────────")
-    eval_results: dict[str, list[dict]] = {"dqn": [], "fixed_time": [], "simple_actuated": []}
+    eval_results: dict[str, list[dict]] = {
+        "dqn": [],
+        "fixed_time": [],
+        "simple_actuated": [],
+        "max_pressure": [],
+    }
 
     policies: dict[str, Any] = {
         "dqn": agent,
         "fixed_time": FixedTimePolicy(cycle_seconds=90.0, n_phases=4),
         "simple_actuated": SimpleActuatedPolicy(),
+        "max_pressure": MaxPressurePolicy(),
     }
 
     for name, policy in policies.items():
@@ -829,7 +1124,9 @@ def main() -> None:
             r = _run_episode(
                 traci, sumo_binary, sumocfg, tls_id,
                 policy=policy, max_steps=steps_ep, seed=ep_seed,
-                train_agent=None, env_cfg=env_cfg,
+                train_agent=None,
+                decision_interval_steps=args.decision_interval_steps,
+                env_cfg=env_cfg,
             )
             r["episode"] = i
             eval_results[name].append(r)
@@ -861,18 +1158,15 @@ def main() -> None:
     print(f"[P4] MARL: {len(all_tls_ids)} junction(s)")
 
     # Use RL for all junctions in MARL evaluation.
-    # We load one DQN instance per TLS to keep per-agent objects independent.
     marl_agents: dict[str, Any] = {}
-    for tid in all_tls_ids:
-        try:
-            marl_agent = _load_saved_rl_agent(output_dir, run_id="latest")
-            marl_agent.epsilon = 0.0
-            marl_agents[tid] = marl_agent
-        except Exception:
-            # Keep the run alive even if a per-agent load fails.
-            if _is_rl_agent(agent):
-                agent.epsilon = 0.0
-            marl_agents[tid] = agent
+    try:
+        shared_marl_agent = _load_saved_rl_agent(output_dir, run_id="latest")
+        shared_marl_agent.epsilon = 0.0
+        marl_agents = {tid: shared_marl_agent for tid in all_tls_ids}
+    except Exception:
+        if _is_rl_agent(agent):
+            agent.epsilon = 0.0
+        marl_agents = {tid: agent for tid in all_tls_ids}
 
     marl_results: list[dict] = []
     for i in range(min(args.eval_episodes, 3)):
@@ -880,7 +1174,9 @@ def main() -> None:
         r = _run_multi_agent_episode(
             traci, sumo_binary, sumocfg, all_tls_ids,
             agents=marl_agents, max_steps=steps_ep,
-            seed=ep_seed, env_cfg=env_cfg,
+            seed=ep_seed,
+            decision_interval_steps=args.decision_interval_steps,
+            env_cfg=env_cfg,
         )
         marl_results.append(r)
         print(f"  marl ep={i}  mean_reward={r['mean_reward']:+.3f}  "
@@ -919,6 +1215,7 @@ def main() -> None:
             "mode": training_mode,
             "n_episodes": n_episodes,
             "steps_per_episode": steps_ep,
+            "decision_interval_steps": args.decision_interval_steps,
             "train_every": args.train_every,
             "train_updates_per_step": train_updates_per_step,
             "n_training_junctions": len(train_tls_ids),
@@ -931,10 +1228,27 @@ def main() -> None:
             "epsilon_decay": epsilon_decay,
             "final_epsilon": training_final_epsilon,
             "reward_halting_weight": reward_halting_w,
+            "reward_pressure_weight": reward_pressure_w,
             "reward_throughput_weight": reward_throughput_w,
             "reward_waiting_weight": reward_waiting_w,
+            "phase_competition_features": not args.disable_phase_competition_features,
+            "reference_policy": args.reference_policy,
+            "reference_demo_episodes": args.reference_demo_episodes,
+            "reference_pretrain_updates": args.reference_pretrain_updates,
+            "reference_pretrain_batch_size": args.reference_pretrain_batch_size,
+            "reference_pretrain_margin": args.reference_pretrain_margin,
+            "reference_prob_start": args.reference_prob_start,
+            "reference_prob_end": args.reference_prob_end,
+            "reference_prob_decay_episodes": args.reference_prob_decay_episodes,
+            "reference_actions_used_total": int(
+                sum(run.get("reference_actions_used", 0) for run in train_history)
+            ),
+            "demo_collection": demo_collect_stats,
+            "demo_pretrain": demo_pretrain_stats,
             "final_mean_loss": round(float(np.mean(agent.loss_history[-100:])), 6)
             if agent.loss_history else None,
+            "final_mean_imitation_loss": round(float(np.mean(agent.imitation_loss_history[-100:])), 6)
+            if isinstance(agent, ImprovedDQNAgent) and agent.imitation_loss_history else None,
         },
         "single_agent_eval": {
             name: {
